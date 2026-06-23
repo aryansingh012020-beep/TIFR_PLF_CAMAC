@@ -1,0 +1,16 @@
+.lamps_prefs
+*.o
+*.ko
+*.mod.c
+*.mod
+Module.symvers
+modules.order
+*.cmd
+.tmp_versions/
+lamps
+crash
+ascii2d
+cmc100test
+ldcmc100
+mkword
+zmass

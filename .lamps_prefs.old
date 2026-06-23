@@ -1,0 +1,10 @@
+SetupDir= /home/linac/Downloads/lamps/set
+ListFDir= /home/linac/Downloads/lamps/zls
+BanDir= /home/linac/Downloads/lamps/ban
+SpecDir= /home/linac/Downloads/lamps/spec
+BatDir= /home/linac/Downloads/lamps/bat
+CalDir= /home/linac/Downloads/lamps/cal
+LogDir= /home/linac/Downloads/lamps/log
+MacroDir= /home/linac/Downloads/lamps/mac
+Theme1d= 0
+Theme2d= 0

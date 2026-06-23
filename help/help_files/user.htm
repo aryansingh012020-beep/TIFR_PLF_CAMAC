@@ -1,0 +1,153 @@
+<HTML>
+<HEAD><TITLE>User</TITLE></HEAD>
+<BODY BGCOLOR='#FFDDDD'><FONT COLOR='red' FACE='verdana'>
+<FONT COLOR='brown' SIZE=+3><CENTER>FORTRAN Subroutine <U>user.F</U></CENTER></FONT>
+
+<P><U>user.F</U> is a FORTRAN subroutine that is a part of
+LAMPS which can be easily edited by the user to meet his own
+special requirements. This allows user programability without
+having to develop a full program with the complexity of LAMPS.
+One can concentrate on a specific task which is not covered
+as a standard feature of LAMPS.
+
+<P>In order to work with user.F one must keep a copy of the
+entire source code in the working directory and not rely on
+running LAMPS via a PATH setting. A new executable is to
+be built every time user.F is changed. It is best to copy
+<FONT COLOR='black' FACE='courier' size=+1><CODE>lamps.tgz</CODE></FONT> 
+to the required directory and unpack it here.
+
+<P>A skeleton user.F is provided in the LAMPS distribution. 
+Before begining to work on it, it is wise to make a copy of 
+it so that one can recover the original:
+
+<FONT COLOR='black' FACE='courier' size=+1>
+$cp user.F user_safe.F
+</PRE></CODE></BLOCKQUOTE></FONT>
+
+<P>After making changes to user.F, you can recompile 
+everything by the <FONT COLOR='black' FACE='courier' size=+1>
+<CODE>make</CODE></FONT> command. Recall
+that <FONT COLOR='black' FACE='courier' size=+1><CODE>make</CODE></FONT> 
+is an intelligent command. Only the files
+that have changed are recompiled. So after the first
+build, when user.F is changed, 
+<FONT COLOR='black' FACE='courier' size=+1><CODE>make</CODE></FONT>
+completes quickly.
+
+<P>The main utility of <U>user.F</U> is in offline use, but
+it is equally applicable for online use. Here we explain how to
+program user.F for offline use.
+
+<P>user.F consists of the following subroutines:
+
+<FONT COLOR='black' FACE='courier' size=+1>
+<BLOCKQUOTE><CODE><PRE>
+      SUBROUTINE BSTART()
+      C*Initialization routine called before a batch of files is analysed
+
+      SUBROUTINE FSTART()
+      C*Initialization routine called for every list file
+
+      SUBROUTINE USERSUB(NADC,NSEUDO,ADC)
+      C*User routine to calculate extra pseudo parameters.
+
+      SUBROUTINE FSTOP()
+      C*Called after the analysis of every list file
+
+      SUBROUTINE BSTOP()
+      C*Called at the end of analysis of a batch of files
+</PRE></CODE></BLOCKQUOTE></FONT>
+
+<P>BSTART is called at the begining of an analysis run. Here one can
+initialise values of constants etc. which will not require to be 
+changed during the analysis of all the list files comprising the batch.
+It is possible to have READ statements here. One could open a file
+and read values from it. This file must be closed in BSTOP. One
+can read keyboard input also, if desired. PRINT and WRITE statements
+to the terminal window or to a file are permitted.
+
+<P>FSTART is similar, however this subroutine is called just before
+the start of analysis of each list file. So here one can initialise
+values that will change from file to file. If trying to write something
+to the terminal, make sure to insert the FORTRAN <FONT COLOR='black'><CODE>PAUSE</CODE></FONT>
+statement so that it remains visible. Any files opened should be closed
+in FSTOP.
+
+<P>USERSUB is at the heart of things. It is called event-by-event.
+Here one can do any operation desired to manipulate the data. The
+main intention is to create pseudo-parameters of a non-standard
+nature. For this one must define the pseudo parameter of type
+"USER" in the <A HREF="setup.htm" TARGET="lmain">setup</A>. Since
+USERSUB is called at <i>every event</i> one should definitely avoid
+file i/o, PRINT and PAUSE statements here (except for debugging
+purposes). Repetitive calculation, the result of which will not
+change from event to event, should also be avoided (can be moved
+to BSTART or FSTART). To communicate data from BSTART and FSTART
+to USERSUB, insert COMMON statements as required.
+
+<P>FSTOP is called at the end of each list-file.
+
+<P>BSTOP is called when all the list files in the batch have been
+analysed.
+
+<U>NOTE</U>: Errors in user.F become the users responsibility. 
+Compilation errors will become evident after "make". Logical
+errors,  overflows, exceeding dimension bounds etc can produce
+unexpected results or cause LAMPS to crash with Segmentaion faults.
+In such cases, debug things inside USERSUB by PRINT and PAUSE
+statements. The normal mistakes beginners make is to not visualise
+the magnitude of the numbers they are generating. Consider the
+following code which tries to scale an ADC (for gain matching
+purposes):
+
+<FONT COLOR='black' FACE='courier' size=+1>
+<BLOCKQUOTE><CODE><PRE>
+      SUBROUTINE USERSUB(NADC,NSEUDO,ADC)
+      INTEGER*2 ADC(MAX_TOTAL_PAR)
+C*User routine to calculate extra pseudo parameters.
+      ADC(NADC+1) = -1.531+1.121*ADC(1)
+      RETURN
+      END
+</PRE></CODE></BLOCKQUOTE></FONT>
+
+If ADC(1) has an ADC gain of 8192 and the first pseudo ADC(NADC+1), 
+is defined as USER type with a gain also of 8192 there will be a 
+possibility that when ADC(NADC+1) is computed, the result will exceed 
+8191 or become -ve. Correct coding is as follows:
+
+<FONT COLOR='black' FACE='courier' size=+1>
+<BLOCKQUOTE><CODE><PRE>
+      SUBROUTINE USERSUB(NADC,NSEUDO,ADC)
+      INTEGER*2 ADC(MAX_TOTAL_PAR)
+C*User routine to calculate extra pseudo parameters.
+      ADC(NADC+1) = -3.531+1.121*ADC(1)
+      IF (ADC(NADC+1).LT.0) ADC(NADC+1) = 0
+      IF (ADC(NADC+1).GT.8191) ADC(NADC+1) = 8191
+      RETURN
+      END
+</PRE></CODE></BLOCKQUOTE></FONT>
+
+<P>There are other utilities of user.F beyond generating user defined
+pseudo parameters. Basically one gets access to the ADC values event-by-
+event and one can manipulate the data in any desired way. It is allowed
+even to overwrite an ADC value if that is what one wants to do. One could
+e.g. employ user.F to re-write list mode data in some other format
+into a file. The only thing is that one should be sure what one is
+doing. LAMPS cannot be responsible for what goes on inside user.F
+
+<P>Take note also of the performance degrade when doing computations
+in USERSUB. Write the code carefully and optimally. I know one user
+who wanted to do a table look up from numbers in a disk file inside 
+USERSUB! Not only would LAMPS run very slowly under these circumstances
+but the disk would be "thrashed" heavily. Correct would be to read
+the table into memory during BSTART or FSTART and then use the values
+passed via a common block. If there are a lot of SIN(x) or EXP(x)
+type of computations inside USERSUB, consider storing a table
+of values in BSTART or FSTART. For example suppose we need COS(THETA)
+inside USERSUB. If an accuracy of say 0.1 degrees in THETA is
+sufficient, one could store values in an array COSVAL(900) to cover
+0-90 degrees, which is enough for 0-360 degrees coverage.
+
+</FONT></BODY>
+</HTML>

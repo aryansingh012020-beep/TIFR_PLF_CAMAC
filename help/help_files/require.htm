@@ -1,0 +1,34 @@
+<HTML>
+<HEAD><TITLE>Reqirements</TITLE></HEAD>
+<BODY BGCOLOR='#CCFFCC'><FONT COLOR='#007700' SIZE=+1>
+<FONT COLOR='red' SIZE=+3><CENTER>REQUIREMENTS</CENTER></FONT>
+On-line use requires CAMAC hardware and a PC. Offline use requires only PC.
+
+<P> 1. One or two CAMAC crates with any model ADCs, TDCs, QDCs, Scalers etc
+
+<P> 2. New generation TCAMCON-95/CC-2000 transputer based crate controller with PCI card (ISA card can be used 
+after minor modifications to the source code).
+It is also compatible with the older TCAMCON-95 transputer based system supplied by ELD, 
+BARC. (contact A.Chatterjee <A HREF="mailto:DrAmbar@gmail.com">DrAmbar@gmail.com</A> 
+for details). For a two crate system, there should be two controllers connected to dual port PCI card.
+
+<P> 3. One PC (a reasonably new model) with Linux installed. Fedora Core Linux (any version)
+is recommended, however LAMPS works fine under
+older Linux versions such as Red Hat 9.x, 7.x etc. 
+LAMPS works on other versions of Linux (such as SUSE), but you may have to change the make files
+and compile the driver yourself. I have not tested it.
+
+<P> 4. Make sure that the graphics library gtk+ is installed. You can check this by typing: 
+<font color='red'><CODE>rpm -q gtk+</CODE></font>. If it is not installed you can load it from the installation CDs or
+<A HREF="http://www.gtk.org"> www.gtk.org</A>
+
+<P> 5. The X-Windows resolution should be set to 1024 x 768. If the resolution is higher, 
+the fonts will look too small. If the resolution is smaller, the windows will appear partly
+off screen. 
+
+<TABLE>
+<tr><td><img src='./cc.jpg'></td><td><img src='./pcicard.gif'></td></tr>
+<tr><td>CC9/2000 Crate Controller</td><td>Dual Port PCI Card</td></tr>
+</TABLE>
+
+</FONT></BODY></HTML>

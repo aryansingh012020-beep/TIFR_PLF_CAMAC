@@ -1,0 +1,157 @@
+<HTML>
+<HEAD><TITLE>List Mode Formats</TITLE></HEAD>
+<BODY BGCOLOR='#DDFFDD'>
+<FONT COLOR='red'><H2><CENTER>List Mode Formats</CENTER></H2></FONT>
+
+<CENTER><TABLE BORDER=1 CELLSPACING=2 CELLPADDING=4>
+    <tr><td>zls format</td><td>Read and Write</td></tr>
+    <tr><td>NSC Candle/Freedom</td><td>Read and Write</td></tr>
+    <tr><td>gls format</td><td>Read only</td></tr>
+    <tr><td>Exogam format</td><td>Read only</td></tr>
+</TABLE></CENTER>
+
+<P>Here we describe the zero-suppression formats:<br>
+1. Normal (sometimes refered to as <U>zls</U>)<br> 
+2. Advanced (sometimes refered to as <U>gls</U>)<br>
+3. Freedom (or Candle, the NSC format)
+4. For the Exogam format one can refer to the Euroball/Exogam web site.
+
+<P>The first format, "Normal" is the one in use since a
+long time at the BARC-TIFR Pelletron. The second format
+"Advanced" gives a better compression when the
+number of detectors is large and the data is sparse.
+(see A.Chatterjee et al., Pramana-Journal of Physics, <u>57</u> (2001) 135 
+
+<P>LAMPS uses the file naming convention
+*.zls for both "Normal" and "Advanced" files. The files
+are distinguished by block headers inside the file
+and LAMPS senses this automatically while reading files.
+
+<P>LAMPS can write list mode data in zls and NSC formats and can analyse data in 
+the above 4 formats.
+
+<P><CENTER><U>Zero Suppression for Normal and Advanced Formats<br>
+Practical Aspects</U></CENTER>
+<P>Zero suppression is a method of keeping list files
+compact. Data that does not meet a specified LLD/ULD criterion
+is discarded. Zero suppression means discarding zeros in the data, but
+what is "zero"? "Zero" must be understood in a broader sense
+to mean data not lying in the range [LLD,ULD]. It for this reason 
+that the user must carefully
+supply ZSup. LLD and ULD values in <A HREF="setup.htm" TARGET="lmain">
+Setup</A>. A judicious choice will further recduce the size of
+the list mode file. The LLD value by default is set to 1. The user
+sholud increase the LLD as appropriate to his data, e.g. if the count 
+rate is high for unwanted X-rays. The ULD by default is set to 8190.
+If the ADC resolution is different, the user should change this
+to e.g. 4093 for the Phillips 4096 chanel TDC. For a TDC channel
+the ULD value is important. Data where the start is present but stop 
+absent take on a value of 4095 for the Phillips TDC. If these values
+are to be supressed we need a ULD below 4095.
+
+<P><U>Caution</U> LLD and ULD values must be set with care. One user
+accidentally kept ULD=4094 while using an AD413. This hapened when he
+switched the setup from one with the Phillips TDC to a TAC with
+the AD413 ADC (8192 channel). In such a case, this spectrum will show
+correctly during acquisition but in offline analysis will be truncated
+to the wrongly set ULD value! There would be no way to build the
+correct spectrum!
+
+<P><CENTER><U>Description of "Normal" format</U></CENTER>
+<P>The data is stored in blocks. Each block starts with a 4 byte
+block header. The block header is the sequence of characters
+DAPS. If the file were viewed with a text editor 
+(e.g. <CODE>vi demo001.zls</CODE>), the DAPS string at the
+begining of every block would be visible. 
+
+<P>This is followed by 2 16-bit words, the first of which is 
+<CODE>BSize</CODE> (Buffer Size in bytes) and the second is zero. Next 
+comes the zero-suppressed buffer itself, the length of which is
+BSize bytes.<P>
+
+<TABLE BORDER=1 CELLSPACING=2 CELLPADDING=4>
+<TR>
+<TD>Block Header (4 Bytes)</TD> <TD>Buffer Size in bytes (2 bytes)</TD> 
+<TD>Empty (2 bytes)</TD> <TD>Buffer (BSize bytes)</TD>
+</TR>
+<TD>DAPS</TD> <TD>BSize</TD> <TD>0</TD> <TD>Zero-suppressed buffer</TD>
+</TABLE>
+
+<P><U>Note</U>:<br>
+(a) The buffer size is variable. The value of BSize will change
+somewhat from block to block.<br>
+(b) The buffer size specified in the setup is the size of
+the unsuppressed buffer. This value is important during acquisition, 
+but has no relevance while reading back the data. Since the buffer 
+size of each buffer is in the file itself, LAMPS can read the file 
+without the user having to specify the buffer size. So, during analysis the 
+user need not bother to specify a correct value of the buffer size in the setup.
+
+<P>The zero suppressed buffer contains a number of events, 
+one-after-another. Each event consists of an event pattern followed
+by the ADC values of non-"zero" parameters. The event pattern consists
+of NPat 16-bit words, with 
+
+<BLOCKQUOTE><CODE><PRE>
+NPat = (N+15)/16
+</PRE></CODE></BLOCKQUOTE>
+
+where N is the number of parameters. NPat is the integer next less than 
+(N+15)/16. If there are 1 to 16 parameters, NPat = 1. If there are 17 to 32 
+parameters, NPat = 2 and so on. 
+
+<P>The event pattern is a bit-pattern, 1 represents a non-"zero" parameter
+and 0 represents a "zero" parameter. The least significant bit
+corresponds to the first parameter. E.g. 
+sample event from an experiment with 8-parameters:
+
+<BLOCKQUOTE><CODE><PRE>
+Event-Pattern = 74 (Binary 0 0 0 0 0 0 0 0 0 1 0 0 1 0 1 0)
+Data = 1011
+Data = 3102
+Data = 73
+</PRE></CODE></BLOCKQUOTE>
+
+The Event-Pattern = 2^1 + 2^3 + 2^6 shows that 3 detectors have "fired".
+These will be detector numbers 1, 3, 6 if we number the detectors starting
+from zero, but if we number the detectors starting from 1 (the usual convention)
+then these will be detector numbers 2, 4 and 7. The values of the parameters
+of the event are:
+
+<BLOCKQUOTE><CODE><PRE>
+ADC(1)=0; ADC(2)=1011; ADC(3)=0;  ADC(4)=3102
+ADC(5)=0; ADC(6)==0;   ADC(7)=73; ADC(8)=0
+</PRE></CODE></BLOCKQUOTE>
+
+This would be followed by the next event and so on.
+
+<P><CENTER><U>Fortran Code to Read "Normal" format list files</U></CENTER>
+<P>There is a package DemoProgs.tgz package which has examples of reading/writing 
+list-mode and spectra files. This package includes a sample code to read "Normal" 
+format zls files. This is entirely separate from LAMPS and runs without graphics.
+
+To compile this program type:
+
+<BLOCKQUOTE><CODE><PRE>
+f77 readlist.F readzls.c -o readlist 
+</PRE></CODE></BLOCKQUOTE>
+
+A study of the FORTRAN-source readlist.F and C-source readzls.c will
+give sufficient information. By mofifying readlist.F one can construct
+programs to build spectra, re-write the list file after rejecting 
+unwanted events, re-write the list file in a different format etc.
+Most of these facilities are included in LAMPS itself (to be incorporated
+soon), so running readlist not usually required.
+
+<HR NOSHADE><FONT COLOR='RED'>
+<U>Q</U>: What if I have forgotten the number of parameters during acquisition?
+<br><FONT COLOR='GREEN'>
+<U>A</U>: If you know at least that the number of parameters is not more than
+16, you can run LAMPS assuming 16 parameters. Similarly if you know that the
+number of parameters is between 17 to 32, you can run LAMPS assuming 32 parameters.
+After building the spectra it will become clear how many parameters were
+really in use. But if in doubt between say 16 or 17, run readlist with 16 or 32
+parameters to see which way you can read the entire file.
+
+</BODY>
+</HTML>

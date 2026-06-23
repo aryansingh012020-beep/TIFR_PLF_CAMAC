@@ -1,0 +1,20 @@
+<HTML>
+<HEAD><TITLE>Format for 1d Spectra</TITLE></HEAD>
+<BODY BGCOLOR='#FFFFFCC'>
+<FONT COLOR='RED'><H2><CENTER>Format for 1d Spectra</CENTER></H2></FONT>
+
+<FONT FACE='garramond' color='brown'><b>
+<P>The format for 1d spectra is particularly simple. Each z1d file 
+is a binary file containing NSIZE 16-bit or 32-bit words, where NSIZE is the 
+number of channels in the spectrum. The word length is 16-bit (single word)
+or 32-bit (double word) according to the option chosen in the setup. So
+the file size will is NSIZE*2 bytes or NZISE*4 bytes, depending on whether it
+is 16-bit or 32-bit. Note that the file itself contains no information
+about whether the data is 16-bit or 32-bit.
+
+<P>Example programs (in FORTRAN and C) showing how to read and write 1d files 
+are included in DemoProgs.tgz which can be downloaded from the LAMPS website.
+</b></FONT>
+
+</BODY>
+</HTML>

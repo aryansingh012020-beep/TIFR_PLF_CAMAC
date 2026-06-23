@@ -1,0 +1,40 @@
+<HTML>
+<HEAD><TITLE>Software Installation for Offline Use</TITLE></HEAD>
+<BODY BGCOLOR='#FFEEFF'>
+<font color='blue'><H1><CENTER>SOFTWARE INSTALLATION FOR OFFLINE USE</CENTER></H1></font>
+<font color='#EE4400'>
+<H2>System Requirements</H2>
+The <CODE>lamps</CODE> software can be installed on any (recent) Linux computer. Insallation
+for offline use does not require the root password unless a required library is missing.
+<P>
+The libraries listed below are required. 
+The version numbers are not important. So gtk+-1.2.10-31 is as good as gtk+-1.2.10-33.
+<P>
+<OL>
+   <LI>The C compiler gcc (example: gcc-3.4.3-22.1 or compat-gcc-32-g77-3.2.3-47.fc4)
+   <LI>The Fortran compiler g77 (example: gcc-g77-3.4.3-22.1).<br>
+       Lamps also works with f95; in this case replace g77 by f95 editing the Makefile.
+   <LI>The graphics environment gtk+ (example: gtk+-1.2.10-33)
+   <LI>The graphics compiler gtk+-devel (example: gtk+-devel-1.2.10-33 or gtk+-develop-1.2.10-39.i386.rpm)
+</OL>
+<P>
+The command <CODE>rpm -qa|less</CODE> can be used to check.
+If any of these components is missing you must install it from the installation CDs. You need
+the root password for doing this.
+<P>
+<H2>Choosing a directory</H2>
+Lets say you have your account
+in /home/name then you could create a directory /home/name/lamps and install <CODE>lamps</CODE> there and
+you could create home/name/lamps/help and unpack the help files there.
+<OL>
+   <LI>Download the file lampsDDMMYY.tgz into /home/name/lamps.
+   <LI>Unpack it with the command <CODE>tar zxvf lampsDDMMYY.tgz</CODE>
+   <LI>Compile it with the command <CODE>make</CODE>. There should be no warnings or errors. Now the command
+<CODE>./lamps</CODE> will launch the program (if you edit your .bash_profile to have PATH=$PATH:$HOME/bin:./ then 
+the command <CODE>lamps</CODE> will work).
+   <LI>Create the directory /home/name/lamps/help. Download the file help.tgz here and unpack it.
+(<CODE>tar zxvf help.tgz</CODE>).Now you can get help by clicking help.htm. (You wont be able to launch
+help from wihin lamps since it expects the directory /home/lamps/help)
+<P></FONT><FONT FACE='arial'>
+<A HREF='install.htm'>Back to Installation Page</A>
+<BODY></HTML>

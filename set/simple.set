@@ -1,0 +1,186 @@
+------------------------ListMode Setup starts here------------------------------
+ListOn                                  =0
+Compression                             =1
+Event Rate (0-4)                        =2
+No of Gates                             =0
+------------------------ListMode Setup end here---------------------------------
+------------------------Hardware Setup starts here------------------------------
+Number of Crates                        =1
+Camac Mode                              =0
+Stn.No. 1   Module,Lam,Mode,LLD,F,Gain  =0 0 0 0 0 0
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 2   Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 3   Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 4   Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 5   Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 6   Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 7   Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 8   Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 9   Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 10  Module,Lam,Mode,LLD,F,Gain  =1 1 2 50 2 8192
+Parameters, SubAddresses                =<1-4> <0-3>
+ParaNames, ZSupLLD, ZSupULD             =<Para01-04> 1 8190
+Stn.No. 11  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 12  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 13  Module,Lam,Mode,LLD,F,Gain  =1 1 2 50 2 8192
+Parameters, SubAddresses                =<5-8> <0-3>
+ParaNames, ZSupLLD, ZSupULD             =<Para05-08> 1 8190
+Stn.No. 14  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 15  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 16  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 17  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 18  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 19  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 20  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 21  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 22  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 23  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 24  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 25  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 26  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 27  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 28  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 29  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 30  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 31  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 32  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 33  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 34  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 35  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 36  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 37  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 38  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 39  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 40  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 41  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 42  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 43  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 44  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 45  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+Stn.No. 46  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Parameters, SubAddresses                =<> <>
+ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
+------------------------Hardware Setup ends here--------------------------------
+------------------------Spectra Setup starts here-------------------------------
+Spectra Safety                          =1
+Safety Time                             =10
+------------------------Spectra Setup ends here---------------------------------
+------------------------Oned Setup starts here----------------------------------
+No. of 1d Spectra                       =4
+Word Size                               =2
+Spec. No. 1    Para,NPar,Size,Name      =1 1 1024 Oned_1
+NGates1,Cond,NGates2,Cond               =0 0 0 0
+Spec. No. 2    Para,NPar,Size,Name      =2 1 1024 Oned_2
+NGates1,Cond,NGates2,Cond               =0 0 0 0
+Spec. No. 3    Para,NPar,Size,Name      =3 1 1024 Oned_3
+NGates1,Cond,NGates2,Cond               =0 0 0 0
+Spec. No. 4    Para,NPar,Size,Name      =4 1 1024 Oned_4
+NGates1,Cond,NGates2,Cond               =0 0 0 0
+------------------------Oned Setup ends here------------------------------------
+------------------------Twod Setup starts here----------------------------------
+No. of 2d Spectra                       =1
+Word Size                               =1
+Spec. No. 1    XPr,Nx,YPr,Ny,XSz,YSz,Nm =1 1 2 1 512 512 Twod_1
+NGates1,Cond,NGates2,Cond               =0 0 0 0
+Spectrum Type (0=Normal, 1=CDdet)       =0
+------------------------Twod Setup ends here------------------------------------
+--Pseudo (0=Sum,1=Product,2=Ratio,3=Position,4=PI,5=Multiplicty,6=User,7=Array)-
+No. of Pseudo Parameters                =0
+------------------------Pseudo Setup ends here----------------------------------
+------------------------Scaler Setup starts here--------------------------------
+No. of Scalers                          =0
+------------------------Scaler Setup ends here----------------------------------
+------------------------Periodic Log Setup starts here--------------------------
+Periodic Log on?                        =1
+BufCount                                =100
+------------------------Periodic Log Setup ends here----------------------------
+------------------------Macro Setup starts here---------------------------------
+Number of Macros                        =0
+Macro Refresh Rate                      =100
+------------------------Macro Setup ends here-----------------------------------
+IgnoreCamac                             =0

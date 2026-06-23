@@ -1,0 +1,103 @@
+<HTML>
+<HEAD><TITLE>Format for 1d Spectra</TITLE></HEAD>
+<BODY BGCOLOR='#FFRCCFF'>
+<FONT COLOR='GREEN'><H2><CENTER>Format for 2d Spectra</CENTER></H2></FONT>
+
+<FONT FACE='arial' color='navy'>
+<P>The two dimensional data is a matrix of dimension NX x NY which has been
+compressed to save disk space. The copmression method leaves out the zeros
+of the matrix and retains only the non-zero data. 
+
+<P>Each data row is encoded as
+<FONT FACE='courier' size=+1 color='red'>
+<BLOCKQUOTE><CODE><PRE>
+NZ1, ND1, [ND1 data-words]; NZ2, ND2, [ND2 data-words]; ...
+This sequence is repeated for each of the NY rows
+</PRE></CODE> </BLOCKQUOTE></FONT>
+Here NZ and ND values are written as 16-bit values while the data-words are
+written as either 16-bit or 32-bit values depending upon the option 
+<font color='green'><i>Single Word</i></font> or <font color='green'><i>Double Word</i></font> selected in Setup.
+
+<P>To make things clear, here is how a (hypothetical) 8x8 matix would be
+encoded. <br>
+Punctuation marks (comma, semi-colon and brackets) are shown 
+for readabilty - they are not in the data stream. <br>
+NZ values are shown in <font color='red'>red</font>, ND values in <font color='blue'>blue</font>
+and data-words in <font color='green'>green</font>:
+
+<CENTER><TABLE CELLSPACING=20><TR>
+  <TD><CENTER>Raw Matrix</CENTER><TABLE CELLSPACING=2 BORDER=2>
+  <TR><TD>3</TD><TD>2</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>11</TD><TD>0</TD><TD>0</TD></TR>
+  <TR><TD>0</TD><TD>12</TD><TD>17</TD><TD>1</TD><TD>0</TD><TD>0</TD><TD>11</TD><TD>0</TD></TR>
+  <TR><TD>13</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>7</TD><TD>0</TD><TD>18</TD></TR>
+  <TR><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD></TR>
+  <TR><TD>4</TD><TD>3</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>13</TD></TR>
+  <TR><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>13</TD><TD>0</TD><TD>0</TD><TD>0</TD></TR>
+  <TR><TD>2</TD><TD>2</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD></TR>
+  <TR><TD>5</TD><TD>2</TD><TD>1</TD><TD>14</TD><TD>5</TD><TD>11</TD><TD>2</TD><TD>5</TD></TR>
+  </TABLE>
+  </TD>
+  <TD><br></TD><TD><br></TD>
+  <TD><CENTER>Compressed Rows</CENTER><TABLE CELLSPACING=2 BORDER=2>
+  <TR><TD>Row 1</TD><TD>
+                 <font color='red'>0</font>,<font color='blue'>2</font>
+                 <font color='green'>(3,2)</font> 
+                 <font color='red'>3</font>,<font color='blue'>1</font>
+                 <font color='green'>(11)</font>
+                 <font color='red'>2</font>,<font color='blue'>0</font>
+  </TD></TR>
+  <TR><TD>Row 2</TD><TD>
+                 <font color='red'>1</font>,<font color='blue'>3</font>
+                 <font color='green'>(12,17,1)</font>
+                 <font color='red'>2</font>,<font color='blue'>1</font>
+                 <font color='green'>(11)</font>
+                 <font color='red'>1</font>,<font color='blue'>0</font>
+  </TD></TR>
+  <TR><TD>Row 3</TD><TD>
+                 <font color='red'>0</font>,<font color='blue'>1</font>
+                 <font color='green'>(13)</font>
+                 <font color='red'>4</font>,<font color='blue'>1</font>
+                 <font color='green'>(7)</font>
+                 <font color='red'>1</font>,<font color='blue'>1</font>
+                 <font color='green'>(18)</font>
+  </TD></TR>
+  <TR><TD>Row 4</TD><TD>
+                 <font color='red'>8</font>,<font color='blue'>0</font>
+  </TD></TR></TR>
+  <TR><TD>Row 5</TD><TD>
+                 <font color='red'>0</font>,<font color='blue'>2</font>
+                 <font color='green'>(4,3)</font>
+                 <font color='red'>5</font>,<font color='blue'>1</font>
+                 <font color='green'>(13)</font>
+  </TD></TR></TR>
+  <TR><TD>Row 6</TD><TD>
+                 <font color='red'>4</font>,<font color='blue'>1</font>
+                 <font color='green'>(13)</font>
+                 <font color='red'>3</font>,<font color='blue'>0</font>
+  </TD></TR></TR>
+  <TR><TD>Row 7</TD><TD>
+                 <font color='red'>0</font>,<font color='blue'>2</font>
+                 <font color='green'>(2,2)</font>
+                 <font color='red'>6</font>,<font color='blue'>0</font>
+  </TD></TR></TR>
+  <TR><TD>Row 8</TD><TD>
+                 <font color='red'>0</font>,<font color='blue'>8</font>
+                 <font color='green'>(5,2,1,14,5,11,2,5)</font>
+  </TD></TR></TR>
+  </TABLE>
+</TR>
+<TR>
+  <TD><CENTER>Storage Space</CENTER>Single Word: &nbsp;&nbsp;&nbsp;128 bytes<br>Double Word: &nbsp;&nbsp;256 bytes</TD>
+  <TD><br></TD><TD><br></TD>
+  <TD><CENTER>Storage Space</CENTER>Singe Word: &nbsp;&nbsp;&nbsp;&nbsp;82 bytes<br>Double Word: &nbsp;130 bytes</TD>
+</TR>
+</TABLE></CENTER>
+<i><FONT COLOR='red'>This is only a toy example (the minimum matrix size in LAMPS is 16 x 16), nevertheless
+we see a compression factor of 1.56 (Single Word case) or 1.96 (Double Word case).</FONT></i>
+
+<P>Example programs (in FORTRAN and C) showing how to read and write 2d files 
+are included in DemoProgs.tgz which can be downloaded from the LAMPS website.
+</FONT>
+
+</BODY>
+</HTML>
