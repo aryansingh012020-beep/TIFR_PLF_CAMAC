@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/ioctl.h>
 #include <sys/vfs.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -91,37 +90,30 @@ void CreateDir(void);
 void *AcquireData(gpointer Data); void *BuildSpectra(void *Data); void *ControlBatch(gpointer Data);  
 pthread_t Acq,Spec,CntlBat,AStop;
 //----------------------------------------------------------------
-gint CamacNAF(gint Data,gint N,gint A,gint F,gint *XRes,gint *QRes,gint *Lam)
-//Return value is Result. X=XRes, Q=QRes and Lam=Lam Status are made available 
-//Note: The CMC100 response word is 0UUUKLQX DDDDDDDD DDDDDDDD DDDDDDDD
-{
-gint Response;
-Response = camac_naf(DrvFd, Data, N, A, F, XRes, QRes, Lam);
-return Response & 0xFFFFFF;
-}
+
 //*----------------------------------------------------------------------------------------------------------------------
 void CamacZ()
 {
 gint XRes,QRes,Lam;
-(void)CamacNAF(0,28,8,26,&XRes,&QRes,&Lam);
+(void)camac_naf(DrvFd, 0,28,8,26,&XRes,&QRes,&Lam);
 }
 //----------------------------------------------------------------------------------------------------------------------
 void CamacC()
 {
 gint XRes,QRes,Lam;
-(void)CamacNAF(0,28,9,26,&XRes,&QRes,&Lam);
+(void)camac_naf(DrvFd, 0,28,9,26,&XRes,&QRes,&Lam);
 }
 //----------------------------------------------------------------------------------------------------------------------
 void SetI()
 {
 gboolean XRes,QRes,Lam;
-(void)CamacNAF(0,30,9,26,&XRes,&QRes,&Lam);
+(void)camac_naf(DrvFd, 0,30,9,26,&XRes,&QRes,&Lam);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 void ClrI()
 {
 gboolean XRes,QRes,Lam;
-(void)CamacNAF(0,30,9,24,&XRes,&QRes,&Lam);
+(void)camac_naf(DrvFd, 0,30,9,24,&XRes,&QRes,&Lam);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 void Pad(gchar *Str,gint N)                                            //Adds blanks to Str making it exactly N chars long 
@@ -350,7 +342,7 @@ switch (Setup.ListMode.Compr)
               //g_print("BytesWritten=%d\n",BytesWritten);
            break;
    case 2: case 3: 
-           AcqSignal=Stop; Code=STOP_ACQN; camac_write(DrvFd,&Code,sizeof(short)); 
+           AcqSignal=Stop; Code=STOP_ACQN; camac_write_short(DrvFd, Code); 
            SAttention("Error: List format presently unsupported");
    }
 return TRUE;
@@ -392,7 +384,7 @@ while (TRUE)
    if (!strncmp(Str,"SETI",4) ) SetI();
    if (!strncmp(Str,"CLRI",4) ) ClrI();
    if (!strncmp(Str,"CLRC",4) ) CamacC();
-   if (!strncmp(Str,"NAF", 3) ) { GetNaf(Str,&xN,&xA,&xF); (void)CamacNAF(0,xN,xA,xF,&XRes,&QRes,&Lam); }
+   if (!strncmp(Str,"NAF", 3) ) { GetNaf(Str,&xN,&xA,&xF); (void)camac_naf(DrvFd, 0,xN,xA,xF,&XRes,&QRes,&Lam); }
    if (!strncmp(Str,"DLY", 3) ) SAttention("DLY Command in CLR file not permitted!");
    if (!strncmp(Str,"DATA",4) ) SAttention("DATA Command in CLR file not permitted");
    }
@@ -407,7 +399,7 @@ gint N,XRes,QRes,Lam;
 
 if (CheckPhillipsLam(&N) && !Setup.Hardware.UseGtSup)
    {
-   (void)CamacNAF(0,N,3,11,&XRes,&QRes,&Lam);
+   (void)camac_naf(DrvFd, 0,N,3,11,&XRes,&QRes,&Lam);
    }
 }
 //----------------------------------------------------------------------------------------------------------------------
@@ -536,11 +528,11 @@ for (i=0;i<NPar1;++i) Mask[i]=Setup.Parameter.Chan[i]-1;
 
 if (!Setup.Simulator)
    {
-   (void)CamacNAF(0,30,10,26,&XRes,&QRes,&Lam);                                             //Unmask LAM at all stations
-   (void)CamacNAF(4,30,0,17,&XRes,&QRes,&Lam);                                                   //Allow LAM to start LP
+   (void)camac_naf(DrvFd, 0,30,10,26,&XRes,&QRes,&Lam);                                             //Unmask LAM at all stations
+   (void)camac_naf(DrvFd, 4,30,0,17,&XRes,&QRes,&Lam);                                                   //Allow LAM to start LP
    ExecuteClrCommands();                                                //Execute clr file commands to get the first LAM
    ExecuteExtraCommands();              //E.g. For Phillips LAM and no CM90, explicitly clear the Phillips unit to start
-   (void)CamacNAF(0,Setup.Scaler.N[0],0,9,&XRes,&QRes,&Lam);  //Clear Scaler, assume there is only 1 scaler and it is cleared by A0.F9
+   (void)camac_naf(DrvFd, 0,Setup.Scaler.N[0],0,9,&XRes,&QRes,&Lam);  //Clear Scaler, assume there is only 1 scaler and it is cleared by A0.F9
    }
 else g_printf("...AcquireData thread in Simulator Mode\n");
 
@@ -764,7 +756,7 @@ while (TRUE)
         usleep(500);
         }
     if (!(XStatus&3) && (AcqSignal==Resume)) usleep(PollTime);
-    XData=0x0E000000; camac_write(DrvFd,&XData,4);                                                                       //Flush
+    camac_flush(DrvFd);                                                                       //Flush
     XByts=camac_read(DrvFd,CBuf,4*CMC_BUF); XWds=XByts/4;
     if (XByts>0)
        {
@@ -800,7 +792,7 @@ while (TRUE)
         usleep(500);
         }
     if (!(XStatus&3) && (AcqSignal==Resume)) usleep(PollTime);
-    XData=0x0E000000; camac_write(DrvFd,&XData,4);  //Flush
+    camac_flush(DrvFd);  //Flush
     XByts=camac_read(DrvFd,&CBuf[XWdsLeft],4*CMC_BUF);
     if (XByts>0)
        {
@@ -1075,8 +1067,8 @@ gint i;
 
 for (i=0;;i++)
     {
-    camac_write(Fd,&Cmd[i],sizeof(short));
-    if (Cmd[i]==NAF || Cmd[i]==DATA || Cmd[i]==DLY) camac_write(Fd,&Arg[i],sizeof(short));
+    camac_write_short(Fd, Cmd[i]);
+    if (Cmd[i]==NAF || Cmd[i]==DATA || Cmd[i]==DLY) camac_write_short(Fd, Arg[i]);
     else if (Cmd[i]==ENDI) break;
     }
 }
@@ -1090,10 +1082,10 @@ struct timeval Tv;
 if (BatchRunning) { Attention(0,"Not permitted during batch acquisition"); return; }
 if (AcqSignal != Resume) { Attention(0,"Acquisition is not running"); return; }
 AcqSignal=Pause; 
-ioctl(DrvFd,IOC_VTRANSPD_WRITE1,NULL); Code=STOP_ACQN; camac_write(DrvFd,&Code,sizeof(short));    //Send stop code to Crate 1
+camac_stop_acqn(DrvFd, 1); Code=STOP_ACQN; camac_write_short(DrvFd, Code);    //Send stop code to Crate 1
 if (Setup.Hardware.NCrates==2)
    {
-   ioctl(DrvFd,IOC_VTRANSPD_WRITE2,NULL); Code=STOP_ACQN; camac_write(DrvFd,&Code,sizeof(short)); //Send stop code to Crate 2
+   camac_stop_acqn(DrvFd, 2); Code=STOP_ACQN; camac_write_short(DrvFd, Code); //Send stop code to Crate 2
    }
 gtk_label_set_text(GTK_LABEL(S_Stat[0]),"Paused");
 gettimeofday(&Tv,NULL); PauseTime=(double)Tv.tv_sec+(double)Tv.tv_usec*1.0e-06; 
@@ -1123,7 +1115,7 @@ void StopNicely(void)
 gint XRes,QRes,Lam; 
 
 AcqSignal=Stop; 
-(void)CamacNAF(0,30,10,24,&XRes,&QRes,&Lam); //Disable all LAMS
+(void)camac_naf(DrvFd, 0,30,10,24,&XRes,&QRes,&Lam); //Disable all LAMS
 fstop_();                                                    //Execute user written code everytime acquisition is stopped
 }
 /*----------------------------------------------------------------------------------------------------------------------*/
@@ -1135,7 +1127,7 @@ if (BatchRunning) { Attention(0,"Not permitted... Batch acquisition running"); r
 if (AcqSignal == Stop) { Attention(0,"Acquisition is not running"); return; }
 if (AcqSignal == Pause) { Attention(0,"Please resume acquisition first"); return; }
 AcqSignal=Stop; 
-if (!Setup.Simulator) (void)CamacNAF(0,30,10,24,&XRes,&QRes,&Lam); //Disable all LAMs
+if (!Setup.Simulator) (void)camac_naf(DrvFd, 0,30,10,24,&XRes,&QRes,&Lam); //Disable all LAMs
 fstop_();                                                    //Execute user written code everytime acquisition is stopped
 }
 /*----------------------------------------------------------------------------------------------------------------------*/
@@ -1181,31 +1173,30 @@ for (i=0,NPar1=NPar2=0;i<Setup.Parameter.NPar;++i) { if (Setup.Parameter.N[i]>MA
 
 if (Setup.Simulator) { g_print("No ProgramLP in Simulator mode\n"); return; }
 
-XData=0xFFFFFFFF;   camac_write(DrvFd,&XData,4);                      //1st header word
-XData=0x00000000;   camac_write(DrvFd,&XData,4);                      //2nd header word
+camac_lp_header(DrvFd);                                                //LP header words
 
 ProgramLocation=1;
 //If LAM is on a Phillips unit, insert what is supposed to be 8 us delay
 if (CheckPhillipsLam(&Unused))
    {
-   XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4);          //Store next word at ProgramLocation and increment
-   XData=(5<<24)| 3; camac_write(DrvFd,&XData,4);                           //Delay. Value=10 corresponds to 10*800ns=8us, but we find Value=3 works
+   camac_lp_store_next(DrvFd, ProgramLocation++);          //Store next word at ProgramLocation and increment
+   camac_lp_delay(DrvFd, 3);                           //Delay. Value=10 corresponds to 10*800ns=8us, but we find Value=3 works
    }
 
 //Insert NAF commands into the LP Program
 for (i=0;i<NPar1;++i)
     {
-    XData=(3<<24) | ProgramLocation++;  camac_write(DrvFd,&XData,4);                      //Store next word at ProgramLocation and increment
+    camac_lp_store_next(DrvFd, ProgramLocation++);                      //Store next word at ProgramLocation and increment
     N=Setup.Parameter.N[i]; A=Setup.Parameter.A[i]; F=Setup.Parameter.F[i]; 
-    XData=A|F<<4|N<<9;  camac_write(DrvFd,&XData,4);                          //NAF command
+    camac_lp_naf(DrvFd, N, A, F);                          //NAF command
     //g_print("i+1=%d NAF=%d %d %d\n",i+1,N,A,F);
     }
 
 //Insert scaler parameters into the LP Program
 for (i=0;i<Setup.Scaler.NSc1;++i)
     {
-    XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4);
-    N=Setup.Scaler.N[i]; A=Setup.Scaler.A[i]; F=Setup.Scaler.F[i]; XData=A|F<<4|N<<9; camac_write(DrvFd,&XData,4);
+    camac_lp_store_next(DrvFd, ProgramLocation++);
+    N=Setup.Scaler.N[i]; A=Setup.Scaler.A[i]; F=Setup.Scaler.F[i]; camac_lp_naf(DrvFd, N, A, F);
     //g_print("Scaler No=%d NAF=%d %d %d\n",NPar1+i+1,N,A,F); 
     }
 
@@ -1219,11 +1210,11 @@ while (TRUE)
    RemoveInitialBlanks(Str);
    //Issue instruction to store next word at program location, then the instruction and increment
    if (!strncmp(Str,"END", 3) ) break;
-   if (!strncmp(Str,"SETZ",4) ) { XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4); N=28; A=8; F=26; XData=A|F<<4|N<<9;      camac_write(DrvFd,&XData,4); ++XClrPar; }
-   if (!strncmp(Str,"SETI",4) ) { XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4); N=30; A=9; F=26; XData=A|F<<4|N<<9;      camac_write(DrvFd,&XData,4); ++XClrPar; }
-   if (!strncmp(Str,"CLRI",4) ) { XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4); N=30; A=9; F=24; XData=A|F<<4|N<<9;      camac_write(DrvFd,&XData,4); ++XClrPar; }
-   if (!strncmp(Str,"CLRC",4) ) { XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4); N=28; A=9; F=26; XData=A|F<<4|N<<9;      camac_write(DrvFd,&XData,4); ++XClrPar; }
-   if (!strncmp(Str,"NAF", 3) ) { XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4); GetNaf(Str,&N,&A,&F); XData=A|F<<4|N<<9; camac_write(DrvFd,&XData,4); ++XClrPar; }
+   if (!strncmp(Str,"SETZ",4) ) { camac_lp_store_next(DrvFd, ProgramLocation++); N=28; A=8; F=26; camac_lp_naf(DrvFd, N, A, F); ++XClrPar; }
+   if (!strncmp(Str,"SETI",4) ) { camac_lp_store_next(DrvFd, ProgramLocation++); N=30; A=9; F=26; camac_lp_naf(DrvFd, N, A, F); ++XClrPar; }
+   if (!strncmp(Str,"CLRI",4) ) { camac_lp_store_next(DrvFd, ProgramLocation++); N=30; A=9; F=24; camac_lp_naf(DrvFd, N, A, F); ++XClrPar; }
+   if (!strncmp(Str,"CLRC",4) ) { camac_lp_store_next(DrvFd, ProgramLocation++); N=28; A=9; F=26; camac_lp_naf(DrvFd, N, A, F); ++XClrPar; }
+   if (!strncmp(Str,"NAF", 3) ) { camac_lp_store_next(DrvFd, ProgramLocation++); GetNaf(Str,&N,&A,&F); camac_lp_naf(DrvFd, N, A, F); ++XClrPar; }
    if (!strncmp(Str,"DLY", 3) ) { Attention(0,"DLY Command in CLR file not permitted!"); }
    if (!strncmp(Str,"DATA",4) ) { Attention(0,"DATA Command in CLR file not permitted"); }
    }
@@ -1231,8 +1222,8 @@ fclose(Fp);
 
 XExtraPar=XClrPar+Setup.Scaler.NSc1; /*g_print("XExtraPar=%d\n",XExtraPar)*/;
 //Last line of LP program is always Code 31: Quit program mode, go to idle
-XData=(3<<24) | ProgramLocation; camac_write(DrvFd,&XData,4);          //Store next word at ProgramLocation
-XData=(31<<24); camac_write(DrvFd,&XData,4);                           //Code 31: Quit program mode, go to idle
+camac_lp_store_next(DrvFd, ProgramLocation);          //Store next word at ProgramLocation
+camac_lp_quit(DrvFd);                           //Code 31: Quit program mode, go to idle
 usleep(30000);
 }
 /*----------------------------------------------------------------------------------------------------------------------*/
@@ -1247,16 +1238,15 @@ for (i=0,NPar1=NPar2=0;i<Setup.Parameter.NPar;++i) { if (Setup.Parameter.N[i]>MA
 
 if (Setup.Simulator) { g_print("No ProgramLP_QStop in Simulator mode\n"); return; }
 
-XData=0xFFFFFFFF;   camac_write(DrvFd,&XData,4);                      //1st header word
-XData=0x00000000;   camac_write(DrvFd,&XData,4);                      //2nd header word
+camac_lp_header(DrvFd);                                                //LP header words
 
 ProgramLocation=1;
 
 //If LAM is on a Phillips unit, insert what is supposed to be 8 us delay
 if (CheckPhillipsLam(&Unused))
    {
-   XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4);          //Store next word at ProgramLocation and increment
-   XData=(5<<24)| 3; camac_write(DrvFd,&XData,4);                           //Delay. Value=10 corresponds to 10*800ns=8us, but we find Value=3 works
+   camac_lp_store_next(DrvFd, ProgramLocation++);          //Store next word at ProgramLocation and increment
+   camac_lp_delay(DrvFd, 3);                           //Delay. Value=10 corresponds to 10*800ns=8us, but we find Value=3 works
    }
 
 //Insert NAF commands into the LP Program, proceeding by Station Number
@@ -1266,27 +1256,27 @@ for (Stn=0;Stn<MAX_CAMAC_STNS;++Stn) //At present its only for 1 crate
     switch (Setup.Hardware.Modules[Stn])
        {
        case 5: //Phillips 71xx -- QStop block mode
-               XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4);          //Store next word at ProgramLocation and increment
-               XData=(12<<24)| PHILLIPS_START; camac_write(DrvFd,&XData,4);                         //Write 24-bit literal to output stream
-               XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4);          //Store next word at ProgramLocation and increment
-               N=Stn+1; A=0; F=4; XData=A|F<<4|N<<9; camac_write(DrvFd,&XData,4);                      //First NAF command for sparse read
-               XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4);          //Store next word at ProgramLocation and increment
-               XData=(2<<24) | (1<<23) | 15; camac_write(DrvFd,&XData,4);                         //Repeat upto 15 times, stopping if no Q
-               XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4);          //Store next word at ProgramLocation and increment
-               XData=(12<<24)| PHILLIPS_END; camac_write(DrvFd,&XData,4);                           //Write 24-bit literal to output stream
+               camac_lp_store_next(DrvFd, ProgramLocation++);          //Store next word at ProgramLocation and increment
+               camac_lp_literal(DrvFd, PHILLIPS_START);                         //Write 24-bit literal to output stream
+               camac_lp_store_next(DrvFd, ProgramLocation++);          //Store next word at ProgramLocation and increment
+               N=Stn+1; A=0; F=4; camac_lp_naf(DrvFd, N, A, F);                      //First NAF command for sparse read
+               camac_lp_store_next(DrvFd, ProgramLocation++);          //Store next word at ProgramLocation and increment
+               camac_lp_repeat(DrvFd, 1, 15);                         //Repeat upto 15 times, stopping if no Q
+               camac_lp_store_next(DrvFd, ProgramLocation++);          //Store next word at ProgramLocation and increment
+               camac_lp_literal(DrvFd, PHILLIPS_END);                           //Write 24-bit literal to output stream
                break;
        case 1: case 2: case 3: case 4:
        case 6: case 7: case 8: case 9: case 10: case 11: case 12:                                 //Other units -- normal camac mode 
-               XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4);          //Store next word at ProgramLocation and increment
-               XData=(12<<24)| SEQUENTIAL_START; camac_write(DrvFd,&XData,4);                       //Write 24-bit literal to output stream
+               camac_lp_store_next(DrvFd, ProgramLocation++);          //Store next word at ProgramLocation and increment
+               camac_lp_literal(DrvFd, SEQUENTIAL_START);                       //Write 24-bit literal to output stream
                for (i=Setup.Hardware.LoParStn[Stn];i<(Setup.Hardware.LoParStn[Stn]+Setup.Hardware.NParStn[Stn]);++i)
                    {
-                   XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4);      //Store next word at ProgramLocation and increment
+                   camac_lp_store_next(DrvFd, ProgramLocation++);      //Store next word at ProgramLocation and increment
                    N=Setup.Parameter.N[i]; A=Setup.Parameter.A[i]; F=Setup.Parameter.F[i]; 
-                   XData=A|F<<4|N<<9;  camac_write(DrvFd,&XData,4);                                                          //NAF command
+                   camac_lp_naf(DrvFd, N, A, F);                                                          //NAF command
                    }
-               XData=(3<<24) | ProgramLocation++;  camac_write(DrvFd,&XData,4);         //Store next word at ProgramLocation and increment
-               XData=(12<<24)| SEQUENTIAL_END; camac_write(DrvFd,&XData,4);                         //Write 24-bit literal to output stream
+               camac_lp_store_next(DrvFd, ProgramLocation++);         //Store next word at ProgramLocation and increment
+               camac_lp_literal(DrvFd, SEQUENTIAL_END);                         //Write 24-bit literal to output stream
                break;
        }
     }
@@ -1294,24 +1284,24 @@ for (Stn=0;Stn<MAX_CAMAC_STNS;++Stn) //At present its only for 1 crate
 //Insert scaler parameters into the LP Program
 if (Setup.Scaler.NSc1)
    {
-   XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4);          //Store next word at ProgramLocation and increment
-   XData=(12<<24)| SCALERS_START; camac_write(DrvFd,&XData,4);                          //Write 24-bit literal to output stream
+   camac_lp_store_next(DrvFd, ProgramLocation++);          //Store next word at ProgramLocation and increment
+   camac_lp_literal(DrvFd, SCALERS_START);                          //Write 24-bit literal to output stream
    }
 for (i=0;i<Setup.Scaler.NSc1;++i)
     {
-    XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4);         //Store next word at ProgramLocation and increment
-    N=Setup.Scaler.N[i]; A=Setup.Scaler.A[i]; F=Setup.Scaler.F[i]; XData=A|F<<4|N<<9; camac_write(DrvFd,&XData,4);
+    camac_lp_store_next(DrvFd, ProgramLocation++);         //Store next word at ProgramLocation and increment
+    N=Setup.Scaler.N[i]; A=Setup.Scaler.A[i]; F=Setup.Scaler.F[i]; camac_lp_naf(DrvFd, N, A, F);
     //g_print("Scaler No=%d NAF=%d %d %d\n",NPar1+i+1,N,A,F); 
     }
 if (Setup.Scaler.NSc1)
    {
-   XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4);          //Store next word at ProgramLocation and increment
-   XData=(12<<24)| SCALERS_END; camac_write(DrvFd,&XData,4);                            //Write 24-bit literal to output stream
+   camac_lp_store_next(DrvFd, ProgramLocation++);          //Store next word at ProgramLocation and increment
+   camac_lp_literal(DrvFd, SCALERS_END);                            //Write 24-bit literal to output stream
    }
 
 //Insert clr file commands into the LP Program
-XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4);          //Store next word at ProgramLocation and increment
-XData=(12<<24)| CLEAR_START; camac_write(DrvFd,&XData,4);                            //Write 24-bit literal to output stream
+camac_lp_store_next(DrvFd, ProgramLocation++);          //Store next word at ProgramLocation and increment
+camac_lp_literal(DrvFd, CLEAR_START);                            //Write 24-bit literal to output stream
 sprintf(ClrName,"%s/memory1.clr",SetupDir);
 if ( (Fp=fopen(ClrName,"r"))==NULL) { sprintf(Msg,"Missing file %s",ClrName); Attention(0,Msg); return; }
 while (TRUE)
@@ -1320,20 +1310,20 @@ while (TRUE)
    RemoveInitialBlanks(Str);
    //Issue instruction to store next word at program location, then the instruction and increment
    if (!strncmp(Str,"END", 3) ) break;
-   if (!strncmp(Str,"SETZ",4) ) { XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4); N=28; A=8; F=26; XData=A|F<<4|N<<9;      camac_write(DrvFd,&XData,4); }
-   if (!strncmp(Str,"SETI",4) ) { XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4); N=30; A=9; F=26; XData=A|F<<4|N<<9;      camac_write(DrvFd,&XData,4); }
-   if (!strncmp(Str,"CLRI",4) ) { XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4); N=30; A=9; F=24; XData=A|F<<4|N<<9;      camac_write(DrvFd,&XData,4); }
-   if (!strncmp(Str,"CLRC",4) ) { XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4); N=28; A=9; F=26; XData=A|F<<4|N<<9;      camac_write(DrvFd,&XData,4); }
-   if (!strncmp(Str,"NAF", 3) ) { XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4); GetNaf(Str,&N,&A,&F); XData=A|F<<4|N<<9; camac_write(DrvFd,&XData,4); }
+   if (!strncmp(Str,"SETZ",4) ) { camac_lp_store_next(DrvFd, ProgramLocation++); N=28; A=8; F=26; camac_lp_naf(DrvFd, N, A, F); }
+   if (!strncmp(Str,"SETI",4) ) { camac_lp_store_next(DrvFd, ProgramLocation++); N=30; A=9; F=26; camac_lp_naf(DrvFd, N, A, F); }
+   if (!strncmp(Str,"CLRI",4) ) { camac_lp_store_next(DrvFd, ProgramLocation++); N=30; A=9; F=24; camac_lp_naf(DrvFd, N, A, F); }
+   if (!strncmp(Str,"CLRC",4) ) { camac_lp_store_next(DrvFd, ProgramLocation++); N=28; A=9; F=26; camac_lp_naf(DrvFd, N, A, F); }
+   if (!strncmp(Str,"NAF", 3) ) { camac_lp_store_next(DrvFd, ProgramLocation++); GetNaf(Str,&N,&A,&F); camac_lp_naf(DrvFd, N, A, F); }
    if (!strncmp(Str,"DLY", 3) ) { Attention(0,"DLY Command in CLR file not permitted!"); }
    if (!strncmp(Str,"DATA",4) ) { Attention(0,"DATA Command in CLR file not permitted"); }
    }
 fclose(Fp);
-XData=(3<<24) | ProgramLocation++; camac_write(DrvFd,&XData,4);          //Store next word at ProgramLocation and increment
-XData=(12<<24)| CLEAR_END; camac_write(DrvFd,&XData,4);                              //Write 24-bit literal to output stream
+camac_lp_store_next(DrvFd, ProgramLocation++);          //Store next word at ProgramLocation and increment
+camac_lp_literal(DrvFd, CLEAR_END);                              //Write 24-bit literal to output stream
 //Last line of LP program is always Code 31: Quit program mode, go to idle
-XData=(3<<24) | ProgramLocation; camac_write(DrvFd,&XData,4);          //Store next word at ProgramLocation
-XData=(31<<24); camac_write(DrvFd,&XData,4);                           //Code 31: Quit program mode, go to idle
+camac_lp_store_next(DrvFd, ProgramLocation);          //Store next word at ProgramLocation
+camac_lp_quit(DrvFd);                           //Code 31: Quit program mode, go to idle
 usleep(30000);
 }
 /*----------------------------------------------------------------------------------------------------------------------*/
@@ -1360,7 +1350,7 @@ while (1)
    if (!strncmp(Str,"SETI",4) ) SetI();
    if (!strncmp(Str,"CLRI",4) ) ClrI();
    if (!strncmp(Str,"CLRC",4) ) CamacC();
-   if (!strncmp(Str,"NAF", 3) ) { GetNaf(Str,&N,&A,&F); (void)CamacNAF(XData,N,A,F,&XRes,&QRes,&Lam); }
+   if (!strncmp(Str,"NAF", 3) ) { GetNaf(Str,&N,&A,&F); (void)camac_naf(DrvFd, XData,N,A,F,&XRes,&QRes,&Lam); }
    if (!strncmp(Str,"DLY", 3) ) { Delay=GetVal(Str); usleep(1000*Delay); }  //Delay in millisecs
    if (!strncmp(Str,"DATA",4) ) XData=GetVal(Str);
    }
@@ -1368,7 +1358,7 @@ fclose(Fp);
 usleep(30000);
 //Lines added 19 April 2010 in the hope of flushing data
 Discard=g_new(guint32,CMC_BUF);
-D=0x0E000000; camac_write(DrvFd,&D,4);  //FIFO flush
+camac_flush(DrvFd);  //FIFO flush
 Byts=camac_read(DrvFd,Discard,CMC_BUF); //Driver flush
 if (Byts>0) g_print("Obtained %d bytes while flushing!\n",Byts);
 g_free(Discard);

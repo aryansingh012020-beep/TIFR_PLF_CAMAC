@@ -11,8 +11,22 @@ SETS = calib.o check_setup.o control.o create_dir.o exogam.o feedback.o fit.o \
 OBJS = ascii2d.o cmc100test.o crash.o ldcmc100.o mkword.o zmass.o $(SETS)
 EXEDIR = ../
 EXECS = $(EXEDIR)ascii2d $(EXEDIR)cmc100test $(EXEDIR)crash $(EXEDIR)lamps \
-        $(EXEDIR)ldcmc100 $(EXEDIR)mkword $(EXEDIR)zmass
-all:    $(EXECS)
+        $(EXEDIR)ldcmc100 $(EXEDIR)mkword $(EXEDIR)zmass $(EXEDIR)camacctl
+LIBS = libcamac.a libcamac.so
+all:    $(EXECS) $(LIBS)
+
+# PIC object for shared library
+libcamac_pic.o: libcamac.c libcamac.h
+	$(CC) -O3 -fPIC -c -o libcamac_pic.o libcamac.c
+
+# Static library
+libcamac.a: libcamac.o
+	ar rcs libcamac.a libcamac.o
+
+# Shared library
+libcamac.so: libcamac_pic.o
+	$(CC) -shared -o libcamac.so libcamac_pic.o
+
 $(EXEDIR)ascii2d: ascii2d.o useful.o open.o
 	$(CC) -o $(EXEDIR)ascii2d ascii2d.o useful.o open.o $(CFLAGS) $(LDFLAGS)
 $(EXEDIR)cmc100test: cmc100test.o useful.o open.o libcamac.o
@@ -31,10 +45,15 @@ $(EXEDIR)lamps: $(SETS)
 	@echo "* Make complete. If you dont have errors...            *"
 	@echo "* go to the upper level directory and type ./lamps     *"
 	@echo "********************************************************"
+
+# camacctl CLI - links only against libcamac (no GTK needed)
+$(EXEDIR)camacctl: camacctl.o libcamac.o
+	$(CC) -O3 -o $(EXEDIR)camacctl camacctl.o libcamac.o
+
 $(OBJS): lamps.h
 user.o radware_io.o: constants.h
 main.o control.o: common.h
 freedom.o rewrite.o: common.h
 clean:
-	rm -f $(OBJS) $(EXECS)
+	rm -f $(OBJS) $(EXECS) $(LIBS) libcamac_pic.o libcamac_pic.o camacctl.o
 	@echo "------------Cleanup done------------"

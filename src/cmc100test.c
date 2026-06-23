@@ -6,12 +6,9 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <sys/ioctl.h>
 #include <string.h>
 #include "libcamac.h"
 
-#define CMC_CTL_RESET   _IO('Z', 0)
-#define CMC_CTL_R1      _IO('Z', 1)
 
 #define MAX_FNAME_LENGTH   80                              //Max no of characters for file names (with full absolute path)
 #define MAX_DIR_ENTRIES  5000                                      //FileX Widget: maximum number of files/sub-directories
@@ -51,53 +48,33 @@ void CamacZ()
 { 
 gboolean XRes,QRes,Lam;
 
-(void)CamacNAF(0,28,8,26,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, 0,28,8,26,&XRes,&QRes,&Lam);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 void CamacC()
 {
 gboolean XRes,QRes,Lam;
 
-(void)CamacNAF(0,28,9,26,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, 0,28,9,26,&XRes,&QRes,&Lam);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 void SetI()
 { 
 gboolean XRes,QRes,Lam;
 
-(void)CamacNAF(0,30,9,26,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, 0,30,9,26,&XRes,&QRes,&Lam);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 void ClrI()
 { 
 gboolean XRes,QRes,Lam;
 
-(void)CamacNAF(0,30,9,24,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, 0,30,9,24,&XRes,&QRes,&Lam);
 }
 //-----------------------------------------------------------------------------------------------------------------------
-int CamacNAF(gint Data,gint N,gint A,gint F,gboolean *XRes,gboolean *QRes,gboolean *Lam)
-//Return value is Result. X=XRes, Q=QRes and Lam=Lam Status are made available 
-//Note: The CMC100 response word is 0UUUKLQX DDDDDDDD DDDDDDDD DDDDDDDD
-{
-int x_res, q_res, lam;
-int response = camac_naf(Fd, Data, N, A, F, &x_res, &q_res, &lam);
-if (XRes) *XRes = x_res;
-if (QRes) *QRes = q_res;
-if (Lam) *Lam = lam;
-return response & 0xFFFFFF;
-}
+
 //-----------------------------------------------------------------------------------------------------------------------
-int FullCamacNAF(gint Data,gint N,gint A,gint F,gboolean *XRes,gboolean *QRes,gboolean *Lam)
-//Return value is Result. X=XRes, Q=QRes and Lam=Lam Status are made available 
-//Note: The CMC100 response word is 0UUUKLQX DDDDDDDD DDDDDDDD DDDDDDDD
-{
-int x_res, q_res, lam;
-int response = camac_naf(Fd, Data, N, A, F, &x_res, &q_res, &lam);
-if (XRes) *XRes = x_res;
-if (QRes) *QRes = q_res;
-if (Lam) *Lam = lam;
-return response;
-}
+
 //-----------------------------------------------------------------------------------------------------------------------
 void ExecuteNAF(GtkWidget *W,gpointer Unused)
 {
@@ -109,7 +86,7 @@ Data=atoi(gtk_entry_get_text(GTK_ENTRY(CamTest->InputData)));
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn)); 
 A=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->SetA));
 F=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->SetF));
-Result=CamacNAF(Data,N,A,F,&XRes,&QRes,&Lam);
+Result=camac_naf(Fd, Data,N,A,F,&XRes,&QRes,&Lam);
 sprintf(Str,"Executed Data=%d N=%d A=%d F=%d\nResult:%d X=%d Q=%d L=%d\n",Data,N,A,F,Result,XRes,QRes,Lam);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
 }
@@ -124,7 +101,7 @@ Data=atoi(gtk_entry_get_text(GTK_ENTRY(CamTest->InputData)));
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn)); 
 A=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->SetA));
 F=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->SetF));
-Result=FullCamacNAF(Data,N,A,F,&XRes,&QRes,&Lam);
+Result=camac_naf_full(Fd, Data,N,A,F,&XRes,&QRes,&Lam);
 sprintf(Str,"Executed Data=%d N=%d A=%d F=%d\nResult:%d X=%d Q=%d L=%d\n",Data,N,A,F,Result,XRes,QRes,Lam);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
 sprintf(Str,"24-bit:%d 16-bit:%d 12-bit\n",Result & 0xFFFFFF,Result & 0xFFFF,Result & 0xFFF);
@@ -150,7 +127,7 @@ gboolean XRes,QRes,Lam;
 gchar Str[80];
 
 Data=0;
-CamacNAF(Data,30,0,17,&XRes,&QRes,&Lam);                                                 //Write zero to control register
+camac_naf(Fd, Data,30,0,17,&XRes,&QRes,&Lam);                                                 //Write zero to control register
 sprintf(Str,"Wrote zero to control register\n");
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
 }
@@ -163,16 +140,16 @@ gchar Str[80];
 
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Control register:",-1);
 Data=g_random_int_range(100,1000);
-CamacNAF(Data,30,0,17,&XRes,&QRes,&Lam);                                         //Write random value to control register
-Result=CamacNAF(Data,30,0,1,&XRes,&QRes,&Lam);                                                    //Read control register
+camac_naf(Fd, Data,30,0,17,&XRes,&QRes,&Lam);                                         //Write random value to control register
+Result=camac_naf(Fd, Data,30,0,1,&XRes,&QRes,&Lam);                                                    //Read control register
 sprintf(Str,"Wrote: %d, Readback: %d\n",Data,Result);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
 
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Output stream:",-1);
-D=0xFFFFFFFF; camac_write(Fd,&D,4); D=0x00000000; camac_write(Fd,&D,4);                                         //write header words
+camac_lp_header(Fd);                                         //write header words
 Data=g_random_int_range(100,1000);
-D=(12<<24)|Data; camac_write(Fd,&D,4);                                                 //Write 24-bit literal to output stream
-D=0x0E000000; camac_write(Fd,&D,4);                                                                    //Flush or trailer word
+camac_lp_literal(Fd, Data);                                                 //Write 24-bit literal to output stream
+camac_flush(Fd);                                                                    //Flush or trailer word
 camac_read(Fd,&Result,4);                                        //Check the response. We expect to recover the 24-bit literal
 sprintf(Str,"Wrote: %d, Readback: %d\n",Data,Result & 0xFFFFFF);                        //Dont forget to mask to 24-bits
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
@@ -220,7 +197,7 @@ gint N;
 gboolean XRes,QRes,Lam;
                                                                                                                              
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
-(void)CamacNAF(0,N,0,9,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, 0,N,0,9,&XRes,&QRes,&Lam);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"A=0 F=9 Done\n",-1);
 }
 //-----------------------------------------------------------------------------------------------------------------------
@@ -232,7 +209,7 @@ gboolean XRes,QRes,Lam;
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 for (i=0;i<100000;++i)
     {
-    (void)CamacNAF(0,N,0,9,&XRes,&QRes,&Lam);
+    (void)camac_naf(Fd, 0,N,0,9,&XRes,&QRes,&Lam);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"A=0 F=9 Done\n",-1);
     }
 }
@@ -333,7 +310,7 @@ gchar Str[80];
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 for (A=0;A<8;++A)
     {
-    //CamacNAF(N,A,0); Val=(gint)DataRead() & 4095;
+    //camac_naf(Fd, N,A,0); Val=(gint)DataRead() & 4095;
     sprintf(Str,"(%d %d) ",A,Val);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     }
@@ -349,7 +326,7 @@ gchar Str[80];
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 for (A=0;A<8;++A)
     {
-    //CamacNAF(N,A,0); Val=(gint)DataRead() & 4095;
+    //camac_naf(Fd, N,A,0); Val=(gint)DataRead() & 4095;
     sprintf(Str,"(%d %d) ",A,Val);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     }
@@ -362,11 +339,11 @@ gint N,A,Val;
 gchar Str[80];
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
-//CamacNAF(N,0,25);
+//camac_naf(Fd, N,0,25);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Test AD811 A=0 F=25\n",-1);
 for (A=0;A<8;++A)
     {
-    //CamacNAF(N,A,0); Val=(gint)DataRead() & 4095;
+    //camac_naf(Fd, N,A,0); Val=(gint)DataRead() & 4095;
     sprintf(Str,"(%d %d) ",A,Val);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     }
@@ -378,7 +355,7 @@ void AD811DisableLAM(GtkWidget *W,gpointer Unused)
 gint N;
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
-//CamacNAF(N,12,24);
+//camac_naf(Fd, N,12,24);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Disable LAM A=12 F=24\n",-1);
 }
 //-----------------------------------------------------------------------------------------------------------------------
@@ -387,7 +364,7 @@ void AD811EnableLAM(GtkWidget *W,gpointer Unused)
 gint N;
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
-//CamacNAF(N,12,26);
+//camac_naf(Fd, N,12,26);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Enable LAM A=12 F=26\n",-1);
 }
 //-----------------------------------------------------------------------------------------------------------------------
@@ -396,7 +373,7 @@ void AD811Reset(GtkWidget *W,gpointer Unused)
 gint N;
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
-//CamacNAF(N,12,11);
+//camac_naf(Fd, N,12,11);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Reset A=12 F=11\n",-1);
 }
 //-----------------------------------------------------------------------------------------------------------------------
@@ -510,7 +487,7 @@ gchar Str[80];
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 for (A=0;A<4;++A)
     {
-    //CamacNAF(N,A,2); Val=(gint)DataRead() & 4095;
+    //camac_naf(Fd, N,A,2); Val=(gint)DataRead() & 4095;
     sprintf(Str,"%d ",Val);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     }
@@ -526,7 +503,7 @@ gchar Str[80];
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 for (A=0;A<4;++A)
     {
-    //CamacNAF(N,A,2); Val=(gint)DataRead() & 4095;
+    //camac_naf(Fd, N,A,2); Val=(gint)DataRead() & 4095;
     sprintf(Str,"%d ",Val);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     }
@@ -538,7 +515,7 @@ void CM60Clear(GtkWidget *W,gpointer Unused)
 gint N;
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
-//CamacNAF(N,12,9);
+//camac_naf(Fd, N,12,9);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Clear Module A=12 F=9\n",-1);
 }
 //-----------------------------------------------------------------------------------------------------------------------
@@ -547,7 +524,7 @@ void CM60DisableLAM(GtkWidget *W,gpointer Unused)
 gint N;
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
-//CamacNAF(N,12,24);
+//camac_naf(Fd, N,12,24);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Disable LAM A=12 F=24\n",-1);
 }
 //-----------------------------------------------------------------------------------------------------------------------
@@ -556,7 +533,7 @@ void CM60EnableLAM(GtkWidget *W,gpointer Unused)
 gint N;
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
-//CamacNAF(N,12,26);
+//camac_naf(Fd, N,12,26);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Enable LAM A=12 F=26\n",-1);
 }
 //-----------------------------------------------------------------------------------------------------------------------
@@ -565,7 +542,7 @@ void CM60Reset(GtkWidget *W,gpointer Unused)
 gint N;
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
-//CamacNAF(N,12,11);
+//camac_naf(Fd, N,12,11);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Reset A=12 F=11\n",-1);
 }
 //-----------------------------------------------------------------------------------------------------------------------
@@ -577,7 +554,7 @@ gchar Str[80];
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 Data=atol(gtk_entry_get_text(GTK_ENTRY(CamTest->SetLLD)));
-//DataWrite(Data); for (A=0;A<4;++A) CamacNAF(N,A,17);
+//DataWrite(Data); for (A=0;A<4;++A) camac_naf(Fd, N,A,17);
 sprintf(Str,"Set LLD=%ld for Ch 0,1,2,3\n",Data);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
 }
@@ -699,7 +676,7 @@ gchar Str[80];
                                                                                                                              
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 Data=atoi(gtk_entry_get_text(GTK_ENTRY(CamTest->SetLLD)));
-(void)CamacNAF(Data,N,0,16,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, Data,N,0,16,&XRes,&QRes,&Lam);
 sprintf(Str,"Set LLD=%ld common for all 8 inputs\n",Data);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
 }
@@ -712,7 +689,7 @@ gchar Str[80];
                                                                                                                              
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 Data=atoi(gtk_entry_get_text(GTK_ENTRY(CamTest->SetULD)));
-(void)CamacNAF(Data,N,0,17,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, Data,N,0,17,&XRes,&QRes,&Lam);
 sprintf(Str,"Set ULD=%ld common for all 8 inputs\n",Data);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
 }
@@ -724,7 +701,7 @@ gboolean XRes,QRes,Lam;
 gchar Str[80];
                                                                                                                              
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
-(void)CamacNAF(0,N,12,24,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, 0,N,12,24,&XRes,&QRes,&Lam);
 sprintf(Str,"Disable LAM: A=12 F=24\n");
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
 }
@@ -736,7 +713,7 @@ gboolean XRes,QRes,Lam;
 gchar Str[80];
                                                                                                                              
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
-(void)CamacNAF(0,N,12,26,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, 0,N,12,26,&XRes,&QRes,&Lam);
 sprintf(Str,"Enable LAM: A=12 F=26\n");
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
 }
@@ -748,7 +725,7 @@ gboolean XRes,QRes,Lam;
 gchar Str[80];
                                                                                                                              
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
-(void)CamacNAF(0,N,12,10,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, 0,N,12,10,&XRes,&QRes,&Lam);
 sprintf(Str,"Clear LAM: A=12 F=10\n");
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
 }
@@ -771,7 +748,7 @@ if (!strcmp(Str,"Sing. No Gates"))
    { Data=12;  gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Sing. No Gates mode set\n",-1); }
 if (!strcmp(Str,"Sing. + Gates")) 
    { Data=8; gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Sing. + Gates mode set\n",-1); }
-(void)CamacNAF(Data,N,0,16,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, Data,N,0,16,&XRes,&QRes,&Lam);
 CamacC();
 }
 //-----------------------------------------------------------------------------------------------------------------------
@@ -784,7 +761,7 @@ gchar Str[80];
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 for (A=0;A<8;++A)
     {
-    Result=CamacNAF(0,N,A,0,&XRes,&QRes,&Lam); Val=Result & 8191;
+    Result=camac_naf(Fd, 0,N,A,0,&XRes,&QRes,&Lam); Val=Result & 8191;
     sprintf(Str,"%d ",Val);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     }
@@ -918,7 +895,7 @@ gboolean XRes,QRes,Lam;
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 for (A=0;A<4;++A)
     {
-    Result=CamacNAF(0,N,A,0,&XRes,&QRes,&Lam);
+    Result=camac_naf(Fd, 0,N,A,0,&XRes,&QRes,&Lam);
     sprintf(Str,"%d: %ld masked: %d\n",A,Result,Result & 0xFFFF);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     }
@@ -953,7 +930,7 @@ while (TRUE)
      sscanf(Str,"%s %c %d %d %d",Command,&Del,&N,&A,&F);
      if (!Loop)
         {
-        //DataWrite(Data); CamacNAF(N,A,F); Val=DataRead(); SVal=Val & 0xFFFF;
+        //DataWrite(Data); camac_naf(Fd, N,A,F); Val=DataRead(); SVal=Val & 0xFFFF;
         if (Display)
            {
            sprintf(Str,"Executed NAF: %d %d %d Data=%d (%X)\n",N,A,F,SVal,SVal);
@@ -965,7 +942,7 @@ while (TRUE)
         {
         for (i=0;i<LoopVal;++i)
             {
-            //DataWrite(Data); CamacNAF(N,A,F); Val=DataRead(); SVal=Val & 0xFFFF;
+            //DataWrite(Data); camac_naf(Fd, N,A,F); Val=DataRead(); SVal=Val & 0xFFFF;
             sprintf(Str,"LoopVal=%d Data=%d (%X)\n",i,SVal,SVal);
             //gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
             g_print("%s",Str);
@@ -1081,7 +1058,7 @@ gchar Str[80];
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 for (A=0;A<16;++A)
     {
-    Result=CamacNAF(0,N,A,0,&XRes,&QRes,&Lam); Val=Result & 0xFFFFFF;
+    Result=camac_naf(Fd, 0,N,A,0,&XRes,&QRes,&Lam); Val=Result & 0xFFFFFF;
     sprintf(Str,"%ld",Val);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     if (A==15) gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"\n--------------------------------------\n",-1);
@@ -1181,7 +1158,7 @@ gchar Str[80];
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 for (A=0;A<4;++A)
     {
-    //CamacNAF(N,A,0); Val=DataRead();
+    //camac_naf(Fd, N,A,0); Val=DataRead();
     sprintf(Str,"%ld ",Val);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     if (A==3) gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"\n",-1);
@@ -1279,10 +1256,10 @@ gboolean XRes,QRes,Lam;
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 CamacC();
-(void)CamacNAF(0,N,2,25,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, 0,N,2,25,&XRes,&QRes,&Lam);
 for (A=0;A<16;++A)
     {
-    Data=CamacNAF(0,N,A,0,&XRes,&QRes,&Lam); Data=Data & 4095;
+    Data=camac_naf(Fd, 0,N,A,0,&XRes,&QRes,&Lam); Data=Data & 4095;
     sprintf(Str,"(%2d %5d); ",A,Data);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     if (!((A+1)%4)) gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"\n",-1);
@@ -1299,10 +1276,10 @@ gboolean XRes,QRes,Lam;
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 CamacC();
-(void)CamacNAF(0,N,1,25,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, 0,N,1,25,&XRes,&QRes,&Lam);
 for (A=0;A<16;++A)
     {
-    Data=CamacNAF(0,N,A,0,&XRes,&QRes,&Lam); Data=Data & 4095;
+    Data=camac_naf(Fd, 0,N,A,0,&XRes,&QRes,&Lam); Data=Data & 4095;
     sprintf(Str,"(%2d %5d); ",A,Data);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     if (!((A+1)%4)) gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"\n",-1);
@@ -1317,7 +1294,7 @@ gint N;
 gboolean XRes,QRes,Lam;
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
-(void)CamacNAF(0,N,3,11,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, 0,N,3,11,&XRes,&QRes,&Lam);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,
                          "Executed F(11)A(3) Reset Hit Reg. and Data\n",-1);
 }
@@ -1330,7 +1307,7 @@ gchar Str[10];
 gboolean XRes,QRes,Lam;
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
-Data=CamacNAF(0,N,1,6,&XRes,&QRes,&Lam); Data=Data & 65535;
+Data=camac_naf(Fd, 0,N,1,6,&XRes,&QRes,&Lam); Data=Data & 65535;
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Hit Pattern: ",-1);
 for (i=0;i<16;++i) 
     { 
@@ -1346,7 +1323,7 @@ gint N;
 gboolean XRes,QRes,Lam;
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
-(void)CamacNAF(0,N,0,10,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, 0,N,0,10,&XRes,&QRes,&Lam);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Executed F(10)A(0) Clear LAM\n",-1);
 }
 //-----------------------------------------------------------------------------------------------------------------------
@@ -1356,7 +1333,7 @@ gint N;
 gboolean XRes,QRes,Lam;
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
-(void)CamacNAF(0,N,0,26,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, 0,N,0,26,&XRes,&QRes,&Lam);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Executed F(26)A(0) Enable LAM\n",-1);
 }
 //-----------------------------------------------------------------------------------------------------------------------
@@ -1367,7 +1344,7 @@ gboolean XRes,QRes,Lam,Fault;
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Writing 4095 to all sub-addresses\n",-1);
-for (A=0;A<16;++A) (void)CamacNAF(4095L,N,A,16,&XRes,&QRes,&Lam);
+for (A=0;A<16;++A) (void)camac_naf(Fd, 4095L,N,A,16,&XRes,&QRes,&Lam);
 
 Fault=FALSE;
 g_print("Starting digital write-read test 0-4095 on all 16 channels. Please be patient...\n");
@@ -1376,8 +1353,8 @@ for (A=0;A<16;++A)
     g_print("A=%d\n",A);
     for (Data=0;Data<4096;++Data)
         {
-        (void)CamacNAF(Data,N,A,16,&XRes,&QRes,&Lam);
-        Result=CamacNAF(Data,N,A,0,&XRes,&QRes,&Lam);
+        (void)camac_naf(Fd, Data,N,A,16,&XRes,&QRes,&Lam);
+        Result=camac_naf(Fd, Data,N,A,0,&XRes,&QRes,&Lam);
         if ((Result&4095) != Data) { g_print("Digital test failed %d\n",Result&4095); Fault=TRUE; }
         }
     g_print("\n");
@@ -1394,14 +1371,14 @@ gboolean XRes,QRes,Lam;
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 for (A=0;A<16;++A)
     {
-    Data=CamacNAF(0,N,A,0,&XRes,&QRes,&Lam); Data=Data & 4095;
+    Data=camac_naf(Fd, 0,N,A,0,&XRes,&QRes,&Lam); Data=Data & 4095;
     sprintf(Str,"(%2d %5d); ",A,Data);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     if (!((A+1)%4)) gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"\n",-1);
     }
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,
                 "---------------------------------------------------\n",-1);
-(void)CamacNAF(0,N,3,11,&XRes,&QRes,&Lam);                                            //Reset Hit Register
+(void)camac_naf(Fd, 0,N,3,11,&XRes,&QRes,&Lam);                                            //Reset Hit Register
 }
 //-----------------------------------------------------------------------------------------------------------------------
 void PhillipsRead(GtkWidget *W,gpointer Unused)
@@ -1413,7 +1390,7 @@ gboolean XRes,QRes,Lam;
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 for (A=0;A<16;++A)
     {
-    Data=CamacNAF(0,N,A,0,&XRes,&QRes,&Lam); Data=Data & 65535;
+    Data=camac_naf(Fd, 0,N,A,0,&XRes,&QRes,&Lam); Data=Data & 65535;
     sprintf(Str,"(%2d %5d); ",A,Data);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     if (!((A+1)%4)) gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"\n",-1);
@@ -1428,15 +1405,15 @@ gint N,A,Data;
 gboolean XRes,QRes,Lam;
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
-(void)CamacNAF(0,N,0,17,&XRes,&QRes,&Lam); //Select the Pedestal Memory for the next F20 operation
-for (A=0;A<16;++A) (void)CamacNAF(0,N,A,20,&XRes,&QRes,&Lam); //Write Pedestal=0 to all inputs
-(void)CamacNAF(0,N,1,17,&XRes,&QRes,&Lam); //Select the Lower Threshold Memory for the next F20 operation
-for (A=0;A<16;++A) (void)CamacNAF(10,N,A,20,&XRes,&QRes,&Lam); //Write LT=10 to all inputs
+(void)camac_naf(Fd, 0,N,0,17,&XRes,&QRes,&Lam); //Select the Pedestal Memory for the next F20 operation
+for (A=0;A<16;++A) (void)camac_naf(Fd, 0,N,A,20,&XRes,&QRes,&Lam); //Write Pedestal=0 to all inputs
+(void)camac_naf(Fd, 0,N,1,17,&XRes,&QRes,&Lam); //Select the Lower Threshold Memory for the next F20 operation
+for (A=0;A<16;++A) (void)camac_naf(Fd, 10,N,A,20,&XRes,&QRes,&Lam); //Write LT=10 to all inputs
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Set LT=  10 for all inputs\n",-1);
-(void)CamacNAF(0,N,2,17,&XRes,&QRes,&Lam); //Select the Upper Threshold Memory for the next F20 operation
-for (A=0;A<16;++A) (void)CamacNAF(4090,N,A,20,&XRes,&QRes,&Lam); //Write UT=4090 to all inputs
+(void)camac_naf(Fd, 0,N,2,17,&XRes,&QRes,&Lam); //Select the Upper Threshold Memory for the next F20 operation
+for (A=0;A<16;++A) (void)camac_naf(Fd, 4090,N,A,20,&XRes,&QRes,&Lam); //Write UT=4090 to all inputs
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Set UT=4090 for all inputs\n",-1);
-(void)CamacNAF(7,N,0,19,&XRes,&QRes,&Lam); //Enable LT and UT and Pedestal (2^2+2^1+1=7)
+(void)camac_naf(Fd, 7,N,0,19,&XRes,&QRes,&Lam); //Enable LT and UT and Pedestal (2^2+2^1+1=7)
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Enabled LT, UT for all inputs\n",-1);
 }
 //-----------------------------------------------------------------------------------------------------------------------
@@ -1452,7 +1429,7 @@ gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"CAUTION: Before sparse
 
 for (i=0;i<17;++i)
    {
-   Result=FullCamacNAF(0,N,A,4,&XRes,&QRes,&Lam);
+   Result=camac_naf_full(Fd, 0,N,A,4,&XRes,&QRes,&Lam);
    Data=Result & 0xFFF; Inp=(Result & 0xFFFF) >> 12;
    sprintf(Str,"Data=%4d Inp=%4d Q=%1d\n",Data,Inp,QRes);
    gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
@@ -1569,12 +1546,12 @@ Str=gtk_entry_get_text(GTK_ENTRY(GTK_COMBO(CamTest->SetMode)->entry));
 CamacZ(); SetI(); CamacC(); 
 if (!strcmp(Str,"LAM Enabled")) 
    { 
-   (void)CamacNAF(18944L,N,14,20,&XRes,&QRes,&Lam);
+   (void)camac_naf(Fd, 18944L,N,14,20,&XRes,&QRes,&Lam);
    gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Status Register set to 18944 (2^9 + 2^11 + 2^14)\n",-1);
    }
 else
    { 
-   (void)CamacNAF(2560L,N,14,20,&XRes,&QRes,&Lam);
+   (void)camac_naf(Fd, 2560L,N,14,20,&XRes,&QRes,&Lam);
    gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Status Register set to 2560 (2^9 + 2^11)\n",-1);
    }
 ClrI();
@@ -1589,7 +1566,7 @@ gboolean XRes,QRes,Lam;
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn)); 
 SetI();
-Result=CamacNAF(0,N,14,4,&XRes,&QRes,&Lam);
+Result=camac_naf(Fd, 0,N,14,4,&XRes,&QRes,&Lam);
 if (Result==18944) 
    {
    sprintf(Str,"Status Register=18944 : Lam enabled mode\n");
@@ -1624,7 +1601,7 @@ N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 SetI();
 Data=atol(gtk_entry_get_text(GTK_ENTRY(CamTest->SetLLD)));
 Data=MIN(255,Data);
-(void)CamacNAF(Data,N,9,20,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, Data,N,9,20,&XRes,&QRes,&Lam);
 sprintf(Str,"Set Common Threshold=%ld\n",Data);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
 ClrI();
@@ -1638,7 +1615,7 @@ gboolean XRes,QRes,Lam;
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn)); 
 SetI();
-Val=CamacNAF(0,N,9,4,&XRes,&QRes,&Lam); Val=Val & 255;
+Val=camac_naf(Fd, 0,N,9,4,&XRes,&QRes,&Lam); Val=Val & 255;
 sprintf(Str,"Found Common Threshold=%d\n",Val);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
 ClrI();
@@ -1658,7 +1635,7 @@ N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 SetI();
 Data=atol(gtk_entry_get_text(GTK_ENTRY(CamTest->SetOffs)));
 Data=MIN(255,Data);
-for (A=0;A<8;++A) CamacNAF(Data,N,A,20,&XRes,&QRes,&Lam);
+for (A=0;A<8;++A) camac_naf(Fd, Data,N,A,20,&XRes,&QRes,&Lam);
 sprintf(Str,"Set Ofset=%ld for all inputs\n",Data);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
 ClrI();
@@ -1674,7 +1651,7 @@ N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 SetI();
 for (A=0;A<8;++A)
     {
-    Val=CamacNAF(0,N,A,4,&XRes,&QRes,&Lam); Val=Val & 255;
+    Val=camac_naf(Fd, 0,N,A,4,&XRes,&QRes,&Lam); Val=Val & 255;
     sprintf(Str,"(Offset[%d]=%d)\n",A,Val);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     }
@@ -1690,7 +1667,7 @@ gboolean XRes,QRes,Lam;
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn)); 
 for (A=0;A<8;++A)
     {
-    Val=CamacNAF(0,N,A,0,&XRes,&QRes,&Lam); Val=Val & 4095;
+    Val=camac_naf(Fd, 0,N,A,0,&XRes,&QRes,&Lam); Val=Val & 4095;
     sprintf(Str,"(%d %d) ",A,Val);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     }
@@ -1706,7 +1683,7 @@ gboolean XRes,QRes,Lam;
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 for (A=0;A<8;++A)
     {
-    Val=CamacNAF(0,N,A,0,&XRes,&QRes,&Lam); Val=Val & 4095;
+    Val=camac_naf(Fd, 0,N,A,0,&XRes,&QRes,&Lam); Val=Val & 4095;
     sprintf(Str,"(%d %d) ",A,Val);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     }
@@ -1726,14 +1703,14 @@ gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
 sprintf(Str,"Going to known state...");
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
 CamacZ(); SetI(); CamacC();
-(void)CamacNAF(18944L,N,14,20,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, 18944L,N,14,20,&XRes,&QRes,&Lam);
 ClrI();
 sprintf(Str,"Performing self test F25.A0\n");
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
-(void)CamacNAF(0,N,0,25,&XRes,&QRes,&Lam);                                                     //F(25).A(0) Test Function
+(void)camac_naf(Fd, 0,N,0,25,&XRes,&QRes,&Lam);                                                     //F(25).A(0) Test Function
 for (A=0;A<8;++A)
     {
-    Val=CamacNAF(0,N,A,0,&XRes,&QRes,&Lam); Val=Val & 4095;
+    Val=camac_naf(Fd, 0,N,A,0,&XRes,&QRes,&Lam); Val=Val & 4095;
     sprintf(Str,"(%d %d) ",A,Val);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     }
@@ -1864,9 +1841,9 @@ Str=gtk_entry_get_text(GTK_ENTRY(GTK_COMBO(CamTest->SetMode)->entry));
 
 CamacZ(); SetI(); CamacC(); 
 if (!strcmp(Str,"Singles+LAM")) Data=62208; else Data=58112;                                    //Singles+LAM or Coinc.+LAM
-(void)CamacNAF(Data,N,0,16,&XRes,&QRes,&Lam);                                                          //Control Register 1
+(void)camac_naf(Fd, Data,N,0,16,&XRes,&QRes,&Lam);                                                          //Control Register 1
 if (!strcmp(Str,"Singles+LAM")) Data=16; else Data=0;                                       //Disable or Enable Master Gate
-CamacNAF(Data,N,1,16,&XRes,&QRes,&Lam);                                                                //Control Register 2
+camac_naf(Fd, Data,N,1,16,&XRes,&QRes,&Lam);                                                                //Control Register 2
 if (!strcmp(Str,"Singles+LAM")) gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Singles+LAM Mode set\n",-1);
 else                            gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,"Coinc.+LAM Mode set\n",-1);
 ClrI();
@@ -1880,8 +1857,8 @@ gchar Str[100];
 
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn)); 
 SetI(); CamacC();
-Result=CamacNAF(0,N,0,0,&XRes,&QRes,&Lam); Reg1=Result;
-Result=CamacNAF(0,N,1,0,&XRes,&QRes,&Lam); Reg2=Result & 31;
+Result=camac_naf(Fd, 0,N,0,0,&XRes,&QRes,&Lam); Reg1=Result;
+Result=camac_naf(Fd, 0,N,1,0,&XRes,&QRes,&Lam); Reg2=Result & 31;
 if (Reg1==62208 && Reg2==16) sprintf(Str,"Regs=%d %d Mode: Singles+LAM\n",Reg1,Reg2);
 else if (Reg1==58112 && Reg2==0)  sprintf(Str,"Regs=%d %d Mode: Coinc+LAM\n",Reg1,Reg2);
 else sprintf(Str,"Regs=%d %d Mode: ?\n",Reg1,Reg2);
@@ -1898,7 +1875,7 @@ gchar Str[80];
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn)); 
 SetI(); CamacC();
 Data=atoi(gtk_entry_get_text(GTK_ENTRY(CamTest->SetLLD)));
-for (A=0;A<4;++A) (void)CamacNAF(Data,N,A,17,&XRes,&QRes,&Lam);
+for (A=0;A<4;++A) (void)camac_naf(Fd, Data,N,A,17,&XRes,&QRes,&Lam);
 sprintf(Str,"Set LLD=%ld for Ch 0,1,2,3\n",Data);
 gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
 ClrI();
@@ -1914,7 +1891,7 @@ N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 SetI(); CamacC();
 for (A=0;A<4;++A)
     {
-    Result=CamacNAF(0,N,A,1,&XRes,&QRes,&Lam); Val=Result & 255;
+    Result=camac_naf(Fd, 0,N,A,1,&XRes,&QRes,&Lam); Val=Result & 255;
     sprintf(Str,"LLD=%d (%d mV) for Ch %d\n",Val,2*Val,A);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     }
@@ -1930,7 +1907,7 @@ gchar Str[80];
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn)); 
 for (A=0;A<4;++A)
     {
-    Result=CamacNAF(0,N,A,2,&XRes,&QRes,&Lam); Val=Result & 8191;
+    Result=camac_naf(Fd, 0,N,A,2,&XRes,&QRes,&Lam); Val=Result & 8191;
     sprintf(Str,"%d ",Val);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     }
@@ -1946,7 +1923,7 @@ gchar Str[80];
 N=gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(CamTest->Stn));
 for (A=0;A<4;++A)
     {
-    Result=CamacNAF(0,N,A,2,&XRes,&QRes,&Lam); Val=Result & 8191;
+    Result=camac_naf(Fd, 0,N,A,2,&XRes,&QRes,&Lam); Val=Result & 8191;
     sprintf(Str,"%d ",Val);
     gtk_text_insert(GTK_TEXT(CamTest->Output),NULL,NULL,NULL,Str,-1);
     }
@@ -2058,7 +2035,7 @@ void EnableAllLams(GtkWidget *Win,gpointer Data)
 gboolean XRes,QRes,Lam;
 
 if (!DriverOpen) { Attention(100,"Driver is not opened"); return; }
-(void)CamacNAF(0,30,10,26,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, 0,30,10,26,&XRes,&QRes,&Lam);
 Attention(100,"Enabled LAM at all Stations");
 }
 //----------------------------------------------------------------------------------------------------------------------
@@ -2067,7 +2044,7 @@ void DisableAllLams(GtkWidget *Win,gpointer Data)
 gboolean XRes,QRes,Lam;
 
 if (!DriverOpen) { Attention(100,"Driver is not opened"); return; }
-(void)CamacNAF(0,30,10,24,&XRes,&QRes,&Lam);
+(void)camac_naf(Fd, 0,30,10,24,&XRes,&QRes,&Lam);
 Attention(100,"Disabled LAM at all Stations");
 }
 //----------------------------------------------------------------------------------------------------------------------
@@ -2170,15 +2147,14 @@ gint XData,ProgramLocation,D;
 
 if (!DriverOpen) { Attention(0,"Driver is not open!"); return; }
 
-XData=0xFFFFFFFF;   camac_write(Fd,&XData,4);                      //1st header word
-XData=0x00000000;   camac_write(Fd,&XData,4);                      //2nd header word
+camac_lp_header(Fd);                                                //LP header words
 
 for (ProgramLocation=0;ProgramLocation<512;++ProgramLocation)
    {
-   XData=(3<<24) | ProgramLocation; camac_write(Fd,&XData,4);          //Store next word at ProgramLocation
-   XData=(31<<24); camac_write(Fd,&XData,4);                           //Code 31: Quit program mode, go to idle
+   camac_lp_store_next(Fd, ProgramLocation);          //Store next word at ProgramLocation
+   camac_lp_quit(Fd);                           //Code 31: Quit program mode, go to idle
    }
-D=0x0E000000; camac_write(Fd,&D,4);                                                                  //Flush or trailer word
+camac_flush(Fd);                                                                  //Flush or trailer word
 Attention(0,"512 words of LP replaced with NOP");
 }
 //-----------------------------------------------------------------------------------------------------------------------

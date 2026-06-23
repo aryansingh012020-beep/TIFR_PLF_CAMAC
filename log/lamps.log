@@ -268,3 +268,71 @@ Remarks 1:                                                      ]
 Remarks 2:                                                      ]
 Remarks 3:                                                      ]
 Remarks 4:                                                      ]
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Tue Jun 23 13:50:36 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Tue Jun 23 13:51:38 2026      }
+Elapsed sec:            62.2                          }
+Buffers Acquired:       31                            }
+Buffers Processed:      31                            }
+Events:                 3100                          }
+Evt/s:                  49.86                         }
+Dead Time:              -                             }
+List Bytes:             No list                       }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Tue Jun 23 14:03:04 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Tue Jun 23 14:03:46 2026      }
+Elapsed sec:            42.1                          }
+Buffers Acquired:       21                            }
+Buffers Processed:      21                            }
+Events:                 2100                          }
+Evt/s:                  49.88                         }
+Dead Time:              -                             }
+List Bytes:             No list                       }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------

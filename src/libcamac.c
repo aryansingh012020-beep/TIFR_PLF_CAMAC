@@ -38,7 +38,17 @@ int camac_flush(int fd) {
     return camac_write(fd, &data, 4);
 }
 
-int camac_naf(int fd, int data, int n, int a, int f, int *x_res, int *q_res, int *lam) {
+ssize_t camac_write_short(int fd, short value) {
+    return write(fd, &value, sizeof(short));
+}
+
+int camac_stop_acqn(int fd, int crate) {
+    // IOC_VTRANSPD_WRITE1 = 0x8004, IOC_VTRANSPD_WRITE2 = 0x8005
+    int cmd = (crate == 1) ? 0x8004 : 0x8005;
+    return ioctl(fd, cmd, NULL);
+}
+
+int camac_naf_full(int fd, int data, int n, int a, int f, int *x_res, int *q_res, int *lam) {
     int d, response;
 
     d = 0xFFFFFFFF;
@@ -64,4 +74,45 @@ int camac_naf(int fd, int data, int n, int a, int f, int *x_res, int *q_res, int
     if (lam)   *lam = (response >> 26) & 1;
     
     return response;
+}
+
+int camac_naf(int fd, int data, int n, int a, int f, int *x_res, int *q_res, int *lam) {
+    return camac_naf_full(fd, data, n, a, f, x_res, q_res, lam) & 0xFFFFFF;
+}
+
+int camac_lp_header(int fd) {
+    int d;
+    d = 0xFFFFFFFF; camac_write(fd, &d, 4);
+    d = 0x00000000; camac_write(fd, &d, 4);
+    return 0;
+}
+
+int camac_lp_store_next(int fd, int program_location) {
+    int d = (3 << 24) | program_location;
+    return camac_write(fd, &d, 4);
+}
+
+int camac_lp_naf(int fd, int n, int a, int f) {
+    int d = a | (f << 4) | (n << 9);
+    return camac_write(fd, &d, 4);
+}
+
+int camac_lp_delay(int fd, int value) {
+    int d = (5 << 24) | value;
+    return camac_write(fd, &d, 4);
+}
+
+int camac_lp_literal(int fd, int value) {
+    int d = (12 << 24) | value;
+    return camac_write(fd, &d, 4);
+}
+
+int camac_lp_repeat(int fd, int stop_if_no_q, int repeats) {
+    int d = (2 << 24) | (stop_if_no_q << 23) | repeats;
+    return camac_write(fd, &d, 4);
+}
+
+int camac_lp_quit(int fd) {
+    int d = (31 << 24);
+    return camac_write(fd, &d, 4);
 }
