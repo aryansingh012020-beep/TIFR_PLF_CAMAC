@@ -1,0 +1,56 @@
+<HTML>
+<HEAD><TITLE>LAMPS HELP PAGE - Window for 1d</TITLE></HEAD>
+<BODY BGCOLOR='#BBEEAA'>
+<H2><CENTER>Window for 1d Spectra</H2>
+<IMG SRC="help023.gif"></CENTER>
+
+<P>By default the spectra are displayed with Auto Scale on. To change the scale use the scale buttons appearing
+on the left. The + and - buttons increase and decrease the scale by a factor of 2. The Auto button recovers the
+Auto Scale mode. The L button is a toggle for Log or Linear scaling. The M button provides for a manual adjustment
+of the vertical scale. Both YMin and YMax can be set.
+
+<P>At the top is shown the name of the parameter whose spectrum is plotted. The filename shown alongside is the
+name of the file it was read from (if it was read) or the target file name (the name under which it will be
+saved) when acquisition or analysis is running.
+
+<P>The context menu can be brought up by a right-mouse click anywhere over the spectrum window.
+
+<P>If the mouse is clicked and dragged over the window, a region is maked which can then be zoomed etc. During
+this process the status of the cursors (channel number, calibrated value and counts) is displayed at the bottom
+left of the window. Note the following common mouse operations:
+
+<P>1. <U>To obtain the channel number, calibrated value and counts for a specific channel:</U> Click the mouse anywhere
+in the spectrum and then drag it across to the desired point. As the mouse is dragged, the second line shows
+the status of the moving mouse cursor.
+
+<P>2. <U>To zoom and scroll:</U> Click the mouse at one end of the desired region and drag to the other
+end of the region. It could be done as left-to-right or right-to-left. After that, select Zoom from the 
+right-click context menu. The scroll bar at the bottom can then be used to scroll the spectrum. Note that
+the size of the scroll button is representative of the amount of zoom.
+
+<P>The cursors marked during click-and-drag are "soft". They are erased when a window is overlapped over
+the spectrum. However the cursors become "hard" as soon as the window is updated
+either manually (right-click Refresh, or Menu: Display - Refresh All) or at the next auto refresh time
+(according to the setting in the Refresh Rate selector). To get rid of the cursors, just click (do not drag)
+anywhere over the spectrum. While drawing new cursors, the old cursors will still be visible (if a refresh
+had taken place) but will disappear on Refresh.
+
+<P>The <U>Zoom</U> function has been explained above. The multilevel <U>UnZoom</U> function can be used to
+step bacwards in the Zoom heirarchy, while <U>Full</U> takes you back to the full unzoomed spectrum. The
+<U>Refresh</U> function updates the current window.
+
+<P>The other context menu functions 
+<A HREF="area.htm">Area</A>,
+<A HREF="calib1.htm">Calibrate</A>,
+<A HREF="overlap.htm">Overlap</A>,
+<A HREF="quickfit.htm">Quick Fit</A>,
+<A HREF="peaksearch.htm">Peak Search</A>,
+<A HREF="peakfit.htm">Peak Fit</A>,
+<A HREF="zerospec.htm">Zero Spec</A>,
+<A HREF="readwrite.htm">Read/Write</A>,
+<A HREF="backto2d.htm">Back to 2d</A> 
+<A HREF="ps1.htm">PS/EPS/PDF</A>
+are explained in subsequent sections. 
+
+</BODY>
+</HTML>

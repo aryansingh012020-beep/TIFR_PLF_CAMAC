@@ -1,0 +1,42 @@
+<HTML>
+<HEAD><TITLE>Volume</TITLE></HEAD>
+<BODY bgcolor='orange'>
+<H2><CENTER>Volume (invoked from 2d context menu)</CENTER></H2>
+
+<P>Gives the sum of counts of a marked region.
+Y-axis. There are 3 possibilities,<br> 
+(a) No boundary was marked: The volume is of the entire 2d spectrum.<br>
+(b) A rectangular boundary was drawn: The volume is of the rectangular
+box.<br>
+(c) A banana gate (ploygonal shape) was drawn (see 
+<A HREF=bgate.htm TARGET="lmain">BGate</A>): The volume is of the
+banana gate.
+
+<P>If a box is visible on the spectrum window, LAMPS computes the box 
+volume. If a banana gate is visible on the spectrum window, the volume
+is that of the banana gata. If both are visible, the volume is of the
+banana gate. However, this is made clear in the output appearing at
+the bottom of the window. For a box volume the output will be something 
+like:
+<BLOCKQUOTE><CODE><PRE>
+X: 160, 348 Y: 202, 338
+Box Vol=94158
+</CODE></PRE></BLOCKQUOTE>
+
+Here the box coordinates are shown as X: XMin, XMax and Y: YMin, YMax. 
+
+<P>A sample output for a banana volume:
+<BLOCKQUOTE><CODE><PRE>
+X: 188, 307 Y: 122, 329
+Banana Vol=116783
+</CODE></PRE></BLOCKQUOTE>
+
+Here the XMin, XMax, YMin, YMax values are those of a hypothetical
+box which would just contain the banana polygon.
+
+<P>If you get a banana volume when the intention is a box volume,
+you need to "Hide Banana" from the <A HREF=bgate.htm TARGET="lmain">BGate</A> 
+function.
+
+</BODY>
+</HTML>

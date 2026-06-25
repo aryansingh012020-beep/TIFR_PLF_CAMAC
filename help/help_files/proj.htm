@@ -1,0 +1,37 @@
+<HTML>
+<HEAD><TITLE>X/Y Projection</TITLE></HEAD>
+<BODY bgcolor='gold'>
+<H2><CENTER>X/Y Projection (invoked from 2d context menu)</CENTER></H2>
+
+<P>These functions project the 2d spectrum onto either X-axis or
+Y-axis. There are 3 possibilities,<br> 
+(a) No boundary was marked: The projection is of the entire 2d spectrum.<br>
+(b) A rectangular boundary was drawn: The projection is of the rectangular
+box.<br>
+(c) A banana gate (ploygonal shape) was drawn (see 
+<A HREF=bgate.htm TARGET="lmain">BGate</A>): The projection is of the
+banana gate.
+
+<P>If a box is visible on the spectrum window, LAMPS computes a box 
+projection. If a banana gate is visible on the spectrum window, 
+a banana projection is done. If both are visible, it is a banana 
+projection. However, this is made clear in the window title. The 
+window title also tells you if it was a X-Projection or a 
+Y-Projection. The window title is something like:<br>
+<CODE>XProj. of 2d Spec# 1</CODE> (box projection) or<br>
+<CODE>Ban YProj. of 2d #1</CODE> (banana projection)
+
+<P>If you get a banana projection when the intention is a box projection,
+you need to "Hide Banana" from the <A HREF=bgate.htm TARGET="lmain">BGate</A> 
+function.
+
+<P>After a projection has been made, all the functions applicable to 1d
+spectra are available. There is also the extra function, "Back to 2d"
+which returns you to the 2d display.
+
+<P>To save a projection use the <A HREF="readwrite.htm" TARGET="lmain">
+Read/Write function</A> from the 
+1d context menu after making the projection.
+
+</BODY>
+</HTML>

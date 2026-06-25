@@ -1,0 +1,133 @@
+# =========================================================================
+# lamps.db — EPICS Database for LAMPS DAQ
+#
+# Hosted by a softIoc.  The lamps_epics_bridge.c client connects
+# to these PVs and pushes data into them at 5 Hz.
+# Phoebus (or other CA clients) then read from these PVs.
+# =========================================================================
+
+# -------------------------------------------------------------------------
+# Metadata & Status
+# -------------------------------------------------------------------------
+record(stringin, "$(P)STATUS") {
+    field(DESC, "Acquisition Status")
+    field(VAL,  "OFFLINE")
+}
+
+record(stringin, "$(P)RUN_NAME") {
+    field(DESC, "Run Name")
+    field(VAL,  "N/A")
+}
+
+# -------------------------------------------------------------------------
+# Statistics
+# -------------------------------------------------------------------------
+record(longin, "$(P)TOTAL_EVENTS") {
+    field(DESC, "Total Events")
+    field(EGU,  "evts")
+}
+
+record(longin, "$(P)BUFS_ACQUIRED") {
+    field(DESC, "Buffers Read from CAMAC")
+}
+
+record(longin, "$(P)BUFS_PROCESSED") {
+    field(DESC, "Buffers Processed")
+}
+
+record(ai, "$(P)ELAPSED_SEC") {
+    field(DESC, "Elapsed Time")
+    field(EGU,  "s")
+    field(PREC, 1)
+}
+
+record(ai, "$(P)EVENT_RATE") {
+    field(DESC, "Event Rate")
+    field(EGU,  "Hz")
+    field(PREC, 1)
+}
+
+# -------------------------------------------------------------------------
+# Scalers (1 through 64)
+# -------------------------------------------------------------------------
+# Macro substitution could be used, but for simplicity we generate the first
+# 16 scalers explicitly. To support all 64, this pattern is repeated.
+
+record(longin, "$(P)SCALER01") { field(DESC, "Scaler 1") }
+record(longin, "$(P)SCALER02") { field(DESC, "Scaler 2") }
+record(longin, "$(P)SCALER03") { field(DESC, "Scaler 3") }
+record(longin, "$(P)SCALER04") { field(DESC, "Scaler 4") }
+record(longin, "$(P)SCALER05") { field(DESC, "Scaler 5") }
+record(longin, "$(P)SCALER06") { field(DESC, "Scaler 6") }
+record(longin, "$(P)SCALER07") { field(DESC, "Scaler 7") }
+record(longin, "$(P)SCALER08") { field(DESC, "Scaler 8") }
+record(longin, "$(P)SCALER09") { field(DESC, "Scaler 9") }
+record(longin, "$(P)SCALER10") { field(DESC, "Scaler 10") }
+record(longin, "$(P)SCALER11") { field(DESC, "Scaler 11") }
+record(longin, "$(P)SCALER12") { field(DESC, "Scaler 12") }
+record(longin, "$(P)SCALER13") { field(DESC, "Scaler 13") }
+record(longin, "$(P)SCALER14") { field(DESC, "Scaler 14") }
+record(longin, "$(P)SCALER15") { field(DESC, "Scaler 15") }
+record(longin, "$(P)SCALER16") { field(DESC, "Scaler 16") }
+
+# -------------------------------------------------------------------------
+# 1D Spectra (Waveforms)
+# Up to 8192 channels, stored as 32-bit integers (LONG).
+# -------------------------------------------------------------------------
+record(waveform, "$(P)SPEC1D:001") {
+    field(DESC, "Spectrum 1")
+    field(FTVL, "LONG")
+    field(NELM, "8192")
+}
+record(waveform, "$(P)SPEC1D:002") {
+    field(DESC, "Spectrum 2")
+    field(FTVL, "LONG")
+    field(NELM, "8192")
+}
+record(waveform, "$(P)SPEC1D:003") {
+    field(DESC, "Spectrum 3")
+    field(FTVL, "LONG")
+    field(NELM, "8192")
+}
+record(waveform, "$(P)SPEC1D:004") {
+    field(DESC, "Spectrum 4")
+    field(FTVL, "LONG")
+    field(NELM, "8192")
+}
+record(waveform, "$(P)SPEC1D:005") {
+    field(DESC, "Spectrum 5")
+    field(FTVL, "LONG")
+    field(NELM, "8192")
+}
+record(waveform, "$(P)SPEC1D:006") {
+    field(DESC, "Spectrum 6")
+    field(FTVL, "LONG")
+    field(NELM, "8192")
+}
+record(waveform, "$(P)SPEC1D:007") {
+    field(DESC, "Spectrum 7")
+    field(FTVL, "LONG")
+    field(NELM, "8192")
+}
+record(waveform, "$(P)SPEC1D:008") {
+    field(DESC, "Spectrum 8")
+    field(FTVL, "LONG")
+    field(NELM, "8192")
+}
+
+# -------------------------------------------------------------------------
+# Remote DAQ Control
+# -------------------------------------------------------------------------
+# Bridge will monitor this PV (in the future) to relay start/stop commands
+# back to LAMPS via a command queue in shared memory.
+record(bo, "$(P)CMD:START") {
+    field(DESC, "Remote Start")
+    field(ZNAM, "Ready")
+    field(ONAM, "Start")
+}
+
+record(bo, "$(P)CMD:STOP") {
+    field(DESC, "Remote Stop")
+    field(ZNAM, "Ready")
+    field(ONAM, "Stop")
+}
