@@ -29,7 +29,7 @@ from PyQt5.QtWidgets import (
     QDialog, QDialogButtonBox, QRadioButton, QButtonGroup,
     QFileDialog, QMessageBox
 )
-from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtCore import QTimer, Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QColor
 
 import pyqtgraph as pg
@@ -114,7 +114,56 @@ class EpicsProxy:
 
 
 # ---------------------------------------------------------------------------
-# Shared widgets
+# Background EPICS polling thread  (keeps the GUI thread free)
+# ---------------------------------------------------------------------------
+class EpicsPoller(QThread):
+    """
+    All caget / get_waveform calls run here — never on the GUI thread.
+    Emits signals that Qt delivers safely across threads.
+    """
+    metrics_ready  = pyqtSignal(dict)       # fired every REFRESH_MS
+    spectrum_ready = pyqtSignal(object)     # fired every SPEC_REFRESH_MS
+
+    def __init__(self, proxy: 'EpicsProxy', parent=None):
+        super().__init__(parent)
+        self._proxy      = proxy
+        self._running    = True
+        self._det        = 1          # current detector index
+        self._tick       = 0
+        self._spec_every = max(1, SPEC_REFRESH_MS // REFRESH_MS)  # 2
+
+    def set_detector(self, det: int):
+        self._det = det
+
+    def stop_polling(self):
+        self._running = False
+
+    def run(self):
+        while self._running:
+            p = self._proxy
+
+            # ── Metrics (every tick) ──
+            metrics = {
+                'status':    (p.get('STATUS',       as_string=True, default='--') or '--').strip(),
+                'run_name':  (p.get('RUN_NAME',      as_string=True, default='')  or '').strip(),
+                'elapsed':    p.get('ELAPSED_SEC',   default=None),
+                'total_ev':   p.get('TOTAL_EVENTS',  default=None),
+                'ev_rate':    p.get('EVENT_RATE',    default=None),
+                'bufs_acq':   p.get('BUFS_ACQUIRED',  default=None),
+                'bufs_proc':  p.get('BUFS_PROCESSED', default=None),
+                'cmd_rn':    (p.get('CMD:RUN_NAME',  as_string=True, default='') or '').strip(),
+            }
+            self.metrics_ready.emit(metrics)
+
+            # ── Spectrum (every N ticks) ──
+            self._tick = (self._tick + 1) % self._spec_every
+            if self._tick == 0:
+                arr = p.get_waveform(f'SPEC1D:{self._det:03d}')
+                self.spectrum_ready.emit(arr)
+
+            self.msleep(REFRESH_MS)
+
+
 # ---------------------------------------------------------------------------
 class StatusBadge(QLabel):
     def __init__(self):
@@ -1321,29 +1370,33 @@ class LampsDashboard(QMainWindow):
         """)
 
     def _start_timers(self):
-        self._t_metrics = QTimer(self)
-        self._t_metrics.timeout.connect(self._refresh_metrics)
-        self._t_metrics.start(REFRESH_MS)
+        """Start the background EPICS polling thread (replaces QTimers)."""
+        self._poller = EpicsPoller(self._epics, parent=self)
+        self._poller.metrics_ready.connect(self._refresh_metrics)
+        self._poller.spectrum_ready.connect(self._refresh_spectrum)
+        self._poller.start()
 
-        self._t_spec = QTimer(self)
-        self._t_spec.timeout.connect(self._refresh_spectrum)
-        self._t_spec.start(SPEC_REFRESH_MS)
+    def closeEvent(self, event):
+        """Stop the poller thread cleanly before the window closes."""
+        self._poller.stop_polling()
+        self._poller.wait(2000)
+        super().closeEvent(event)
 
-    # ── Refresh ──────────────────────────────────────────────────────────────
-    def _refresh_metrics(self):
-        status    = (self._epics.get("STATUS",       as_string=True, default="--") or "--").strip()
-        run_name  = (self._epics.get("RUN_NAME",     as_string=True, default="—")  or "—").strip()
-        elapsed   = self._epics.get("ELAPSED_SEC",   default=None)
-        total_ev  = self._epics.get("TOTAL_EVENTS",  default=None)
-        ev_rate   = self._epics.get("EVENT_RATE",    default=None)
-        bufs_acq  = self._epics.get("BUFS_ACQUIRED",  default=None)
-        bufs_proc = self._epics.get("BUFS_PROCESSED", default=None)
+    # ── Refresh slots — called via pyqtSignal from EpicsPoller (GUI-thread safe)
+    def _refresh_metrics(self, data: dict):
+        status    = data.get('status',   '--')
+        run_name  = data.get('run_name', '')
+        elapsed   = data.get('elapsed')
+        total_ev  = data.get('total_ev')
+        ev_rate   = data.get('ev_rate')
+        bufs_acq  = data.get('bufs_acq')
+        bufs_proc = data.get('bufs_proc')
 
         self.status_badge.update(status)
         self.ctrl.update_from_status(status)
 
         if not self._rn_prefilled:
-            rn = (self._epics.get("CMD:RUN_NAME", as_string=True, default="") or "").strip()
+            rn = data.get('cmd_rn', '')
             if rn:
                 self.ctrl.prefill_run_name(rn)
                 self._rn_prefilled = True
@@ -1365,11 +1418,13 @@ class LampsDashboard(QMainWindow):
             f"● {self._epics.prefix} @ {self._epics.ioc}"
             if EPICS_AVAILABLE else "● STUB MODE"
         )
-        self.lbl_conn.setStyleSheet(f"color:{'#1aff6e' if is_run else '#555'}; font-size:8pt;")
+        self.lbl_conn.setStyleSheet(
+            f"color:{'#1aff6e' if is_run else '#555'}; font-size:8pt;"
+        )
 
-    def _refresh_spectrum(self):
-        suffix = f"SPEC1D:{self.spec_panel.current_detector:03d}"
-        data   = self._epics.get_waveform(suffix)
+    def _refresh_spectrum(self, data):
+        # Keep poller's detector in sync with the combo box selection
+        self._poller.set_detector(self.spec_panel.current_detector)
         self.spec_panel.update_spectrum(data)
 
 
