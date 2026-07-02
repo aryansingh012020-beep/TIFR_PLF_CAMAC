@@ -347,9 +347,9 @@ class SpectrumPanel(QGroupBox):
         self.plot.showGrid(x=True, y=True, alpha=0.15)
         self.plot.getPlotItem().setMenuEnabled(False)
 
-        # Spectrum curve
+        # Spectrum curve — PyQtGraph 0.13+: stepMode requires len(x)==len(y)
         self.curve = self.plot.plot(
-            np.arange(MAX_CHANNELS + 1, dtype=np.float32),
+            np.arange(MAX_CHANNELS, dtype=np.float32),
             np.zeros(MAX_CHANNELS, dtype=np.float32),
             pen=pg.mkPen("#00d4ff", width=1),
             stepMode="left"
@@ -534,7 +534,7 @@ class SpectrumPanel(QGroupBox):
         nz = int(np.max(np.nonzero(data)[0])) + 1 if data.any() else 64
         nz = max(nz, 64)
         disp = self._data[:nz]
-        x    = np.arange(nz + 1, dtype=np.float32)
+        x    = np.arange(nz, dtype=np.float32)
         self.curve.setData(x=x, y=disp)
 
         if disp.any():
@@ -555,7 +555,7 @@ class SpectrumPanel(QGroupBox):
         self._current_det = self.det_combo.itemData(idx)
         self._data = np.zeros(MAX_CHANNELS, dtype=np.float32)
         self.curve.setData(
-            x=np.arange(MAX_CHANNELS + 1, dtype=np.float32),
+            x=np.arange(MAX_CHANNELS, dtype=np.float32),
             y=np.zeros(MAX_CHANNELS, dtype=np.float32)
         )
         self.lbl_peak.setText("Peak: —")
@@ -842,7 +842,7 @@ class SpectrumPanel(QGroupBox):
         data = self._data
         nz   = int(np.max(np.nonzero(data)[0])) + 1 if data.any() else 64
         nz   = max(nz, 64)
-        ch   = np.arange(nz + 1, dtype=np.float64)
+        ch   = np.arange(nz, dtype=np.float64)
         x_kev = self._cal_poly(ch)
         self.curve.setData(x=x_kev.astype(np.float32),
                            y=data[:nz].astype(np.float32))
