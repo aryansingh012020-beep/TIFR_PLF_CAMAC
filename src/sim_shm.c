@@ -80,7 +80,8 @@ int main(void) {
     shm->n_scaler   = 4;
     shm->n_oned     = 1;
     shm->oned_chan[0] = N_CHAN;
-    strncpy(shm->oned_name[0], "DET1", 31);
+    /* Leave oned_name[0] empty — bridge will use SPEC1D:001 numbering */
+    shm->oned_name[0][0] = '\0';
 
     printf("3 peaks: ch512 (Co-60), ch1024 (Cs-137), ch2048 (K-40)\n");
     printf("Press Ctrl-C to stop.\n\n");
