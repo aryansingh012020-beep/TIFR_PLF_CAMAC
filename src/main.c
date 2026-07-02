@@ -6,6 +6,7 @@
 #include "lamps.h"
 #include "common.h"                                                                                   //The NSC header file
 #include "daq_engine.h"                                                                             //Phase 2: DAQ callbacks
+#include "lamps_cmd.h"                                                                             //Phase 3: remote commands
 
 /*Function templates*/
 void Attention(gint XPos,gchar *Messg);
@@ -18,6 +19,13 @@ void SetStyleRecursively(GtkWidget *W,gpointer Data);
 /* Phase 2: DAQ engine callback handlers — implemented in control.c */
 void GtkDaqErrorHandler(const char *msg);
 void GtkDaqStatusHandler(const DaqStatusEvent *ev);
+/* Phase 3: functions needed by the remote command dispatcher */
+void StopNicely(void);
+void ZeroOned(gint SNo);
+void ZeroTwod(gint SNo);
+/* Phase 4: headless start for remote control */
+gint RemoteStart(const gchar *run_name);
+
 void Screen1(GtkWidget *W,gpointer Data); void Screen2(GtkWidget *W,gpointer Data);
 void Screen3(GtkWidget *W,gpointer Data); void Screen4(GtkWidget *W,gpointer Data);
 void PrevScreen(GtkWidget *W,gpointer Data); void LastScreen(GtkWidget *W,gpointer Data);
@@ -124,6 +132,60 @@ void CommonZoomCallBack(GtkWidget *CheckBut,gpointer Data)
 RealScroll=TRUE; RealScroll2=TRUE;                                                                     //Extra precaution!
 if (GTK_TOGGLE_BUTTON(CheckBut)->active) CommonZoom=TRUE;
 else                                     CommonZoom=FALSE;
+}
+/*----------------------------------------------------------------------------------------------------------------------*/
+/* Phase 3: epics_cmd_poll_cb()
+ *
+ * GTK timeout callback — called every 500 ms on the GTK main thread.
+ * Reads one pending command from the bridge command SHM and dispatches it.
+ *
+ * Thread safety: runs on the GTK main thread (inside gdk_threads_enter),
+ * so it is safe to set AcqSignal and call StopNicely/ZeroOned directly.
+ *
+ * START is logged but not acted on in Phase 3 — starting a new run
+ * requires a valid run name; use the LAMPS GUI to pre-configure it, then
+ * remote STOP/RESET via EPICS.  Full remote START comes in Phase 4.
+ */
+static gboolean epics_cmd_poll_cb(gpointer unused)
+{
+    uint32_t cmd;
+    (void)unused;
+
+    cmd = lamps_cmd_poll();
+    if (cmd == LAMPS_CMD_NONE) return TRUE;  /* nothing pending — keep timer */
+
+    switch (cmd) {
+    case LAMPS_CMD_STOP:
+        fprintf(stderr, "[LAMPS] EPICS remote STOP received\n");
+        if (AcqSignal != Stop) StopNicely();
+        else fprintf(stderr, "[LAMPS] EPICS STOP ignored — not acquiring\n");
+        break;
+
+    case LAMPS_CMD_RESET:
+        fprintf(stderr, "[LAMPS] EPICS remote RESET received\n");
+        if (AcqSignal != Stop) StopNicely();
+        /* Give the acquisition thread 200 ms to see the Stop signal,
+         * then zero all spectra.  ZeroOned/ZeroTwod are GTK-safe here.  */
+        usleep(200000);
+        ZeroOned(-1);
+        ZeroTwod(-1);
+        fprintf(stderr, "[LAMPS] EPICS RESET: spectra cleared\n");
+        break;
+
+    case LAMPS_CMD_START: {
+        char rn[LAMPS_CMD_NAME_LEN] = {0};
+        lamps_cmd_get_run_name(rn, sizeof(rn));
+        fprintf(stderr, "[LAMPS] EPICS remote START (run_name=\"%s\")\n", rn);
+        RemoteStart(rn);
+        break;
+    }
+
+    default:
+        fprintf(stderr, "[LAMPS] EPICS: unknown command %u ignored\n", cmd);
+        break;
+    }
+
+    return TRUE;   /* keep the timer running */
 }
 /*----------------------------------------------------------------------------------------------------------------------*/
 gint main(int argc,char *argv[])
@@ -305,8 +367,16 @@ S_Scaler[3]=gtk_label_new("Scaler4:"); gtk_box_pack_start(GTK_BOX(HBox1),S_Scale
 gtk_widget_show_all(Win);
 gtk_style_unref(RedStyle); gtk_style_unref(BlueStyle);
 gtk_window_get_position(GTK_WINDOW(Win),NULL,&TopOfset);
+
+/* Phase 3: attach command SHM reader and poll every 500 ms on the GTK
+ * main thread. Safe to call StopNicely/ZeroOned here because we are
+ * running inside gdk_threads_enter (the GTK main thread).             */
+lamps_cmd_open_read();   /* non-fatal if bridge not yet started        */
+g_timeout_add(500, epics_cmd_poll_cb, NULL);
+
 gtk_main(); gdk_threads_leave();
 g_list_free(GList);
 return 0;
 }
 /*------------------------------------------------------------------------------------------------------------------------*/
+

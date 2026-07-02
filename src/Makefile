@@ -28,7 +28,7 @@ SETS = calib.o check_setup.o control.o create_dir.o exogam.o feedback.o fit.o \
         freedom.o generator.o help.o init.o iospec.o macro.o main.o main_menu.o offline.o open.o \
         parse.o plot1.o plot2.o postscript.o prefs.o radware_io.o readfile.o rewrite.o rw_setup.o \
         safety.o scalers.o screen.o setup.o themes.o user.o useful.o util.o viewlog.o zlsgls.o \
-        libcamac.o daq_engine.o lamps_shm.o
+        libcamac.o daq_engine.o lamps_shm.o lamps_cmd.o
 OBJS = ascii2d.o cmc100test.o crash.o ldcmc100.o mkword.o zmass.o $(SETS)
 EXEDIR = ../
 EXECS = $(EXEDIR)ascii2d $(EXEDIR)cmc100test $(EXEDIR)crash $(EXEDIR)lamps \
@@ -36,6 +36,11 @@ EXECS = $(EXEDIR)ascii2d $(EXEDIR)cmc100test $(EXEDIR)crash $(EXEDIR)lamps \
         $(EXEDIR)lamps_epics_bridge
 LIBS = libcamac.a libcamac.so
 all:    $(EXECS) $(LIBS)
+
+# Convenience alias: 'make bridge EPICS_BASE=...' builds only the EPICS bridge.
+.PHONY: bridge
+bridge: $(EXEDIR)lamps_epics_bridge
+
 
 # PIC object for shared library
 libcamac_pic.o: libcamac.c libcamac.h
@@ -84,21 +89,32 @@ freedom.o rewrite.o: common.h
 lamps_shm.o: lamps_shm.c lamps_shm.h
 	$(CC) $(CFLAGS) -DLAMPS_SHM_WRITER_SIDE -c -o lamps_shm.o lamps_shm.c
 
-# lamps_epics_bridge: standalone process, no GTK.
-# Builds in stub mode when EPICS_BASE is not set.
-$(EXEDIR)lamps_epics_bridge: lamps_epics_bridge.o lamps_shm_reader.o
+# lamps_epics_bridge: standalone process — no GTK, no lamps LDFLAGS.
+# Builds in stub mode (prints to stdout) when EPICS_BASE is not set.
+# We must NOT inherit LDFLAGS here (that pulls in GTK libraries).
+$(EXEDIR)lamps_epics_bridge: lamps_epics_bridge.o lamps_shm_reader.o lamps_cmd.o
 	$(CC) -O3 -o $(EXEDIR)lamps_epics_bridge \
-	    lamps_epics_bridge.o lamps_shm_reader.o \
+	    lamps_epics_bridge.o lamps_shm_reader.o lamps_cmd.o \
 	    $(EPICS_LDFLAGS) -lrt -lpthread
+	@echo "[OK] lamps_epics_bridge built (EPICS=$(if $(EPICS_BASE),yes,stub))"
+	@if [ -n "$(EPICS_BASE)" ]; then \
+	    echo "     Run with: LD_LIBRARY_PATH=$(EPICS_BASE)/lib/linux-x86_64 ../lamps_epics_bridge -v"; \
+	fi
 
-# Bridge-side shm object: NO writer-side externs, NO GTK.
+# Bridge-side shm object: compiled WITHOUT -DLAMPS_SHM_WRITER_SIDE,
+# so no extern globals from lamps are required, and NO GTK headers.
 lamps_shm_reader.o: lamps_shm.c lamps_shm.h
 	$(CC) -O3 -c -o lamps_shm_reader.o lamps_shm.c
 
-lamps_epics_bridge.o: lamps_epics_bridge.c lamps_shm.h
+# Bridge main object: compiled with EPICS include paths.
+lamps_epics_bridge.o: lamps_epics_bridge.c lamps_shm.h lamps_cmd.h
 	$(CC) -O3 $(EPICS_CFLAGS) -c -o lamps_epics_bridge.o lamps_epics_bridge.c
+
+# Phase 3: command channel object (no GTK, no writer-side externs).
+lamps_cmd.o: lamps_cmd.c lamps_cmd.h
+	$(CC) -O3 -c -o lamps_cmd.o lamps_cmd.c
 
 clean:
 	rm -f $(OBJS) $(EXECS) $(LIBS) libcamac_pic.o camacctl.o \
-	    lamps_shm_reader.o lamps_epics_bridge.o
+	    lamps_shm_reader.o lamps_epics_bridge.o lamps_cmd.o
 	@echo "------------Cleanup done------------"

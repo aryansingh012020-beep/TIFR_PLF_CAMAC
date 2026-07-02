@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdatomic.h>
+#include <time.h>    /* clock_gettime, CLOCK_MONOTONIC */
 
 /* -------------------------------------------------------------------------
  * Internal state
@@ -147,38 +148,105 @@ void lamps_shm_update(void)
 {
 #ifdef LAMPS_SHM_WRITER_SIDE
     int    i, ch, n;
-    time_t now_t;
-    double now, elapsed;
 
     if (!s_shm) return;
 
-    /* --- Begin critical section ----------------------------------------- */
-    /* Mark generation odd: tells readers an update is in progress.         */
-    atomic_fetch_add_explicit((_Atomic uint64_t *)&s_shm->generation, 1,
-                              memory_order_release);
-
-    /* Metadata */
-    strncpy(s_shm->run_name, RunName, 39);
-    s_shm->run_name[39] = '\0';
-
+    /* -----------------------------------------------------------------------
+     * Resolve acq_state FIRST — before the rate-limiter — so that a state
+     * transition (e.g. RUN→STOP) can bypass the rate-limit and write
+     * through immediately.  Without this, stopping acquisition within 100ms
+     * of the last update leaves the old event_rate value in SHM.
+     * --------------------------------------------------------------------- */
+#define LAMPS_SHM_MIN_INTERVAL_NS  100000000ULL   /* 100 ms in nanoseconds */
+    LampsAcqState cur_state_rl;
     switch (AcqSignal) {
-    case 0 /*Stop*/:  s_shm->acq_state = LAMPS_ACQ_STOP;  break;
-    case 1 /*Pause*/: s_shm->acq_state = LAMPS_ACQ_PAUSE; break;
-    default:          s_shm->acq_state = LAMPS_ACQ_RUN;   break;
+    case 0 /*Stop*/:  cur_state_rl = LAMPS_ACQ_STOP;  break;
+    case 1 /*Pause*/: cur_state_rl = LAMPS_ACQ_PAUSE; break;
+    default:          cur_state_rl = LAMPS_ACQ_RUN;   break;
     }
 
-    s_shm->total_events       = (uint64_t)XTotEvts;
-    s_shm->buffers_acquired   = (uint64_t)BuffersAcquired;
-    s_shm->buffers_processed  = (uint64_t)BuffersProcessed;
+    /* Fix 2B: rate-limit, but bypass on any state transition.              */
+    {
+        static uint64_t    s_last_update_ns  = 0;
+        static LampsAcqState s_prev_state_rl = LAMPS_ACQ_STOP;
+        struct timespec ts;
+        uint64_t now_ns;
+        int state_changed = (cur_state_rl != s_prev_state_rl);
 
-    now = (double)time(NULL);
-    elapsed = (StartTime > 0.0) ? (now - StartTime) : 0.0;
-    s_shm->elapsed_seconds = elapsed;
-    s_shm->event_rate = (elapsed > 0.0)
-                        ? (double)XTotEvts / elapsed
-                        : 0.0;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        now_ns = (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 
-    /* Scaler values */
+        if (!state_changed &&
+            (now_ns - s_last_update_ns < LAMPS_SHM_MIN_INTERVAL_NS))
+            return;   /* too soon and no state change — skip expensive copy */
+
+        s_last_update_ns  = now_ns;
+        s_prev_state_rl   = cur_state_rl;
+    }
+
+    /* -----------------------------------------------------------------------
+     * Fix 2C: Instantaneous event rate using Δevents / Δtime.
+     * Reuses cur_state_rl resolved above — no second AcqSignal switch.
+     * --------------------------------------------------------------------- */
+    {
+        static uint64_t      s_prev_events  = 0;
+        static uint64_t      s_prev_time_ns = 0;
+        static LampsAcqState s_prev_state   = LAMPS_ACQ_STOP;
+
+        struct timespec ts_now;
+        uint64_t now_ns;
+        double   event_rate_val = 0.0;
+
+        clock_gettime(CLOCK_MONOTONIC, &ts_now);
+        now_ns = (uint64_t)ts_now.tv_sec * 1000000000ULL
+               + (uint64_t)ts_now.tv_nsec;
+
+        /* Reset delta baseline when a fresh run starts */
+        if (cur_state_rl == LAMPS_ACQ_RUN &&
+            s_prev_state  != LAMPS_ACQ_RUN) {
+            s_prev_events  = (uint64_t)XTotEvts;
+            s_prev_time_ns = now_ns;
+        }
+
+        /* Compute instantaneous rate from delta since last update.
+         * Returns 0.0 when not running (STOP or PAUSE).               */
+        if (cur_state_rl == LAMPS_ACQ_RUN && s_prev_time_ns > 0) {
+            uint64_t delta_evts = (uint64_t)XTotEvts - s_prev_events;
+            uint64_t delta_ns   = now_ns - s_prev_time_ns;
+            if (delta_ns > 0)
+                event_rate_val = (double)delta_evts
+                               / ((double)delta_ns * 1e-9);
+        }
+
+        /* Advance the delta baseline for next call */
+        s_prev_events = (uint64_t)XTotEvts;
+        s_prev_time_ns = now_ns;
+        s_prev_state   = cur_state_rl;
+
+        /* --- Begin seqlock critical section -------------------------------- */
+        atomic_fetch_add_explicit((_Atomic uint64_t *)&s_shm->generation, 1,
+                                  memory_order_release);
+
+        /* Metadata */
+        strncpy(s_shm->run_name, RunName, 39);
+        s_shm->run_name[39] = '\0';
+        s_shm->acq_state = cur_state_rl;
+
+        s_shm->total_events       = (uint64_t)XTotEvts;
+        s_shm->buffers_acquired   = (uint64_t)BuffersAcquired;
+        s_shm->buffers_processed  = (uint64_t)BuffersProcessed;
+
+        {
+            /* Elapsed time: wall clock from StartTime */
+            double now_wall = (double)time(NULL);
+            double elapsed  = (StartTime > 0.0) ? (now_wall - StartTime) : 0.0;
+            s_shm->elapsed_seconds = elapsed;
+        }
+
+        s_shm->event_rate = event_rate_val;
+    }
+
+    /* Scaler values — runs under the seqlock begun above */
     n = Setup.Scaler.NSc;
     if (n > LAMPS_MAX_SCALER_EPICS) n = LAMPS_MAX_SCALER_EPICS;
     s_shm->n_scaler = (uint32_t)n;
@@ -217,7 +285,7 @@ void lamps_shm_update(void)
         }
     }
 
-    /* --- End critical section: mark generation even -------------------- */
+    /* --- End seqlock critical section: mark generation even ------------- */
     atomic_fetch_add_explicit((_Atomic uint64_t *)&s_shm->generation, 1,
                               memory_order_release);
 #endif /* LAMPS_SHM_WRITER_SIDE */

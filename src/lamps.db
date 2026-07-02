@@ -116,18 +116,45 @@ record(waveform, "$(P)SPEC1D:008") {
 }
 
 # -------------------------------------------------------------------------
-# Remote DAQ Control
+# Remote DAQ Control (Phase 3 / Phase 4)
+#
+# Workflow for a remote start:
+#   1. caput LAMPS:CMD:RUN_NAME "run042"   ← set run name first
+#   2. caput LAMPS:CMD:START 1             ← then fire the start trigger
+#
+# For stop/reset:
+#   caput LAMPS:CMD:STOP 1
+#   caput LAMPS:CMD:RESET 1
+#
+# The bo records auto-reset to 0 after 0.5 s (HIGH field) so they act
+# as momentary pushbuttons and the bridge sees only a single rising edge.
 # -------------------------------------------------------------------------
-# Bridge will monitor this PV (in the future) to relay start/stop commands
-# back to LAMPS via a command queue in shared memory.
+
+# Phase 4: run name to use for the next remote START.
+# Set this BEFORE sending CMD:START.  Max 39 characters (LAMPS limit).
+record(stringout, "$(P)CMD:RUN_NAME") {
+    field(DESC, "Run name for next remote START")
+    field(VAL,  "Dummy")
+    field(PINI, "YES")
+}
+
 record(bo, "$(P)CMD:START") {
-    field(DESC, "Remote Start")
+    field(DESC, "Remote Start Acquisition")
     field(ZNAM, "Ready")
     field(ONAM, "Start")
+    field(HIGH, "0.5")
 }
 
 record(bo, "$(P)CMD:STOP") {
-    field(DESC, "Remote Stop")
+    field(DESC, "Remote Stop Acquisition")
     field(ZNAM, "Ready")
     field(ONAM, "Stop")
+    field(HIGH, "0.5")
+}
+
+record(bo, "$(P)CMD:RESET") {
+    field(DESC, "Remote Reset (Stop + Zero Spectra)")
+    field(ZNAM, "Ready")
+    field(ONAM, "Reset")
+    field(HIGH, "0.5")
 }

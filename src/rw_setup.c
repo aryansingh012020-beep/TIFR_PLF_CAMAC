@@ -200,7 +200,8 @@ for (i=0;i<Setup.Oned.N;i++)
     Setup.Oned.NPar[i]=Value[1]; //g_print("Setup.Oned.NPar[%d]=%d\n",i+1,Setup.NPar.Chan[i]);
     Setup.Oned.Chan[i]=Value[2]; //g_print("Setup.Oned.Chan[%d]=%d\n",i+1,Setup.Oned.Chan[i]);
     if (Line[41+ToHere])
-       { strcpy(Setup.Oned.Name[i],&Line[41+ToHere]); Setup.Oned.Name[i][strlen(Setup.Oned.Name[i])-1]='\0'; }
+       { strncpy(Setup.Oned.Name[i],&Line[41+ToHere],MAX_TEXT_FIELD-1); Setup.Oned.Name[i][MAX_TEXT_FIELD-1]='\0';
+         if (strlen(Setup.Oned.Name[i])>0 && Setup.Oned.Name[i][strlen(Setup.Oned.Name[i])-1]=='\n') Setup.Oned.Name[i][strlen(Setup.Oned.Name[i])-1]='\0'; }
     if ( (fgets(Line,100,Fp)==NULL) || Line[40] != '=')
        { sprintf(Str,"Error reading setupfile\nSetup.Oned.Gate1[%d].NGates etc",i+1); strcpy(ErrMessg,Str); return 1; }
     ParseTextToInt(&Line[41],0,4,Value,&ToHere);
@@ -427,7 +428,8 @@ for (i=0;i<Setup.Macro.N;i++)
     {
     if ( (fgets(Line,100,Fp)==NULL) || Line[40] != '=')
        { strcpy(ErrMessg,"Error reading setupfile\nSetup.Macro.Name absent"); return 1; }
-    strcpy(Setup.Macro.Name[i],&Line[41]); Setup.Macro.Name[i][strlen(Setup.Macro.Name[i])-1]='\0';
+    strncpy(Setup.Macro.Name[i],&Line[41],MAX_TEXT_FIELD+1); Setup.Macro.Name[i][MAX_TEXT_FIELD+1]='\0';
+    if (strlen(Setup.Macro.Name[i])>0 && Setup.Macro.Name[i][strlen(Setup.Macro.Name[i])-1]=='\n') Setup.Macro.Name[i][strlen(Setup.Macro.Name[i])-1]='\0';
     //g_print("Setup.Macro.Name=%s\n",Setup.Macro.Name[i]);
     if ( (fgets(Line,100,Fp)==NULL) || Line[40] != '=')
        { strcpy(ErrMessg,"Error reading setupfile\nSetup.Macro.Type absent"); return 1; }

@@ -415,6 +415,79 @@ if (!Setup.Hardware.CamacMode) ProgramLP(); else ProgramLP_QStop();
 daq_start();  /* Phase 3: GTK no longer owns the Acq thread */
 }
 //----------------------------------------------------------------------------------------------------------------------
+/* Phase 4: RemoteStart() — headless version of OverwriteStart() for EPICS control.
+ *
+ * Called from epics_cmd_poll_cb() in main.c (GTK main thread, so it is safe
+ * to set ProgramState, call ZeroOned, daq_start, etc. directly).
+ *
+ * run_name: the run name received from the LAMPS:CMD:RUN_NAME PV.
+ *           If empty or NULL, auto-increments from PrevRun.
+ *
+ * Returns 1 if acquisition was started, 0 if rejected (wrong state).
+ */
+gint RemoteStart(const gchar *run_name)
+{
+gint i;
+gchar DName[MAX_FNAME_LENGTH];
+
+/* Guard: only start if we are truly idle */
+if (ProgramState == AcqOn) {
+    fprintf(stderr, "[LAMPS] EPICS START rejected — acquisition already running\n");
+    return 0;
+}
+if (ProgramState == AnalysisOn || ProgramState == ReWriteOn) {
+    fprintf(stderr, "[LAMPS] EPICS START rejected — another task in progress\n");
+    return 0;
+}
+if (AcqSignal != Stop) {
+    fprintf(stderr, "[LAMPS] EPICS START rejected — AcqSignal not Stop\n");
+    return 0;
+}
+if (BatchRunning) {
+    fprintf(stderr, "[LAMPS] EPICS START rejected — batch running\n");
+    return 0;
+}
+
+/* Set run name */
+if (run_name && strlen(run_name) > 0)
+    strncpy(RunName, run_name, 39);
+else
+    IncrementRunName();
+RunName[39] = '\0';
+
+fprintf(stderr, "[LAMPS] EPICS remote START: run=\"%s\"\n", RunName);
+
+/* Build file paths (same as StartCallBack) */
+sprintf(DName, "%s/Spec_%s", SpecDir, RunName);
+for (i = 0; i < Setup.Oned.N; i++)
+    sprintf(Setup.Files.Oned[i], "%s/%s%03d.z1d", DName, RunName, i+1);
+for (i = 0; i < Setup.Twod.N; i++)
+    sprintf(Setup.Files.Twod[i], "%s/%s%03d.z2d", DName, RunName, i+1);
+mkdir(DName, 0755);
+
+/* Open driver (same as StartCallBack) */
+if (!Setup.Simulator) {
+    if ((DrvFd = camac_open("/dev/cmcamac0")) < 0) {
+        fprintf(stderr,
+                "[LAMPS] EPICS START failed — CAMAC driver not loaded\n");
+        return 0;
+    }
+}
+
+/* Start acquisition — identical to OverwriteStart() */
+ProgramState = AcqOn;
+Setup.Spectra.NoZero = FALSE;   /* always zero on a fresh remote start */
+ZeroOned(-1); ZeroTwod(-1);
+fstart_(RunName, strlen(RunName));
+PauseDuration = 0L;
+strcpy(PrevRun, RunName);
+ExecuteIniCommands();
+if (!Setup.Hardware.CamacMode) ProgramLP(); else ProgramLP_QStop();
+daq_start();
+
+return 1;
+}
+//----------------------------------------------------------------------------------------------------------------------
 void StartCallBack(GtkWidget *W,GtkWidget *StartWin)
 {
 gint Overwrite,i;
