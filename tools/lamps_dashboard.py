@@ -75,17 +75,32 @@ class EpicsProxy:
     def __init__(self, prefix: str, ioc: str):
         self.prefix = prefix
         self.ioc    = ioc
+        self._pv_cache: dict = {}   # suffix → epics.PV object
         if EPICS_AVAILABLE:
             import os
-            os.environ.setdefault("EPICS_CA_ADDR_LIST", ioc)
-            os.environ.setdefault("EPICS_CA_AUTO_ADDR_LIST", "NO")
+            # YES = use local broadcast so softIoc is found automatically
+            os.environ.setdefault("EPICS_CA_ADDR_LIST",      ioc)
+            os.environ.setdefault("EPICS_CA_AUTO_ADDR_LIST", "YES")
+
+    def _pv(self, suffix: str):
+        """Return a cached, auto-connecting PV object (silent on disconnect)."""
+        if not EPICS_AVAILABLE:
+            return None
+        if suffix not in self._pv_cache:
+            self._pv_cache[suffix] = epics.PV(
+                f"{self.prefix}:{suffix}",
+                auto_monitor=False,       # poll-only, no CA monitors
+                connection_timeout=0.0,   # don't block on construction
+                verbose=False,            # suppress connection messages
+            )
+        return self._pv_cache[suffix]
 
     def get(self, suffix, as_string=False, default=None):
-        if not EPICS_AVAILABLE:
+        pv = self._pv(suffix)
+        if pv is None:
             return default
         try:
-            v = epics.caget(f"{self.prefix}:{suffix}",
-                            as_string=as_string, timeout=0.1)
+            v = pv.get(as_string=as_string, timeout=0.05, use_monitor=False)
             return v if v is not None else default
         except Exception:
             return default
@@ -95,16 +110,19 @@ class EpicsProxy:
             print(f"[STUB] caput {self.prefix}:{suffix} = {value}")
             return True
         try:
-            return bool(epics.caput(f"{self.prefix}:{suffix}", value, timeout=2.0))
+            return bool(epics.caput(
+                f"{self.prefix}:{suffix}", value, timeout=2.0
+            ))
         except Exception as e:
             print(f"[WARN] caput {suffix} failed: {e}", file=sys.stderr)
             return False
 
     def get_waveform(self, suffix, nmax=MAX_CHANNELS):
-        if not EPICS_AVAILABLE:
+        pv = self._pv(suffix)
+        if pv is None:
             return np.zeros(nmax, dtype=np.uint32)
         try:
-            v = epics.caget(f"{self.prefix}:{suffix}", timeout=0.2)
+            v = pv.get(timeout=0.1, use_monitor=False)
             if v is None:
                 return np.zeros(nmax, dtype=np.uint32)
             a = np.asarray(v, dtype=np.uint64)
