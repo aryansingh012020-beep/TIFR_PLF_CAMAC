@@ -7,6 +7,7 @@ Phase 7.2: Run control (START / STOP / RESET, run name entry)
 Phase 7.3: Spectrum tools (ROI + area, log/lin scale, crosshair, auto-range)
 Phase 7.4: Peak search (scipy.signal.find_peaks, markers, peak table)
 Phase 7.5: Gaussian peak fitting (scipy.optimize.curve_fit, fit overlay, results)
+Phase 7.6: Calibration (energy assignment, polynomial fit, keV axis, save/load)
 
 Requirements:
   pip install pyqtgraph pyepics PyQt5
@@ -24,7 +25,9 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QComboBox, QFrame, QGroupBox, QPushButton, QLineEdit,
     QCheckBox, QSizePolicy, QDoubleSpinBox, QSpinBox,
-    QTableWidget, QTableWidgetItem, QHeaderView, QSplitter
+    QTableWidget, QTableWidgetItem, QHeaderView, QSplitter,
+    QDialog, QDialogButtonBox, QRadioButton, QButtonGroup,
+    QFileDialog, QMessageBox
 )
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QFont, QColor
@@ -253,6 +256,7 @@ class SpectrumPanel(QGroupBox):
       Phase 7.3 — LinearRegionItem ROI, crosshair, log/lin, auto-range
       Phase 7.4 — Peak search (scipy.signal.find_peaks), markers, peak table
       Phase 7.5 — Gaussian fitting (scipy.optimize.curve_fit), fit overlay
+      Phase 7.6 — Calibration dialog (polynomial fit, keV axis, save/load)
     """
     def __init__(self, epics_proxy: EpicsProxy):
         super().__init__("Live Spectrum")
@@ -262,6 +266,7 @@ class SpectrumPanel(QGroupBox):
         self._log_mode   = False
         self._peak_lines = []   # Phase 7.4: vertical marker InfiniteLines
         self._fit_curves = []   # Phase 7.5: Gaussian fit PlotDataItems
+        self._cal_poly   = None # Phase 7.6: np.poly1d object when calibrated
         self._build()
 
     # ── Build ───────────────────────────────────────────────────────────────
@@ -301,6 +306,24 @@ class SpectrumPanel(QGroupBox):
         )
         self.btn_auto.clicked.connect(self._auto_range)
         row1.addWidget(self.btn_auto)
+
+        # Phase 7.6: Calibration button
+        self.btn_cal = QPushButton("📐 Calibrate")
+        self.btn_cal.setFixedWidth(90)
+        self.btn_cal.setStyleSheet(
+            "QPushButton{color:#bb88ff;background:#1a0d2a;border:1px solid #553388;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
+            "QPushButton:hover{background:#2a1040;border-color:#bb88ff;}"
+        )
+        self.btn_cal.clicked.connect(self._open_calibration_dialog)
+        row1.addWidget(self.btn_cal)
+
+        # Calibration active indicator
+        self.lbl_cal_active = QLabel("")
+        self.lbl_cal_active.setStyleSheet(
+            "color:#bb88ff; font-size:8pt; font-style:italic;"
+        )
+        row1.addWidget(self.lbl_cal_active)
 
         row1.addStretch()
 
@@ -791,6 +814,404 @@ class SpectrumPanel(QGroupBox):
             item.setTextAlignment(Qt.AlignCenter)
             self.peak_table.setItem(r, 3, item)
 
+    # ── Phase 7.6: Calibration ──────────────────────────────────────────────────
+    def _open_calibration_dialog(self):
+        """Open the calibration dialog (Phase 7.6)."""
+        dlg = CalibrationDialog(parent=self, spectrum_panel=self)
+        dlg.exec_()
+
+    def apply_calibration(self, poly: np.poly1d, degree: int):
+        """Switch x-axis to keV using the given polynomial."""
+        self._cal_poly = poly
+        self.plot.setLabel("bottom", "Energy (keV)")
+        self.lbl_cal_active.setText(f"[cal·{degree}]")
+        self._refresh_calibrated_axis()
+
+    def remove_calibration(self):
+        """Revert x-axis to channels."""
+        self._cal_poly = None
+        self.plot.setLabel("bottom", "Channel")
+        self.lbl_cal_active.setText("")
+        # Re-render spectrum in channel space
+        self.update_spectrum(self._data)
+
+    def _refresh_calibrated_axis(self):
+        """Redraw spectrum curve with calibrated x-axis."""
+        if self._cal_poly is None:
+            return
+        data = self._data
+        nz   = int(np.max(np.nonzero(data)[0])) + 1 if data.any() else 64
+        nz   = max(nz, 64)
+        ch   = np.arange(nz + 1, dtype=np.float64)
+        x_kev = self._cal_poly(ch)
+        self.curve.setData(x=x_kev.astype(np.float32),
+                           y=data[:nz].astype(np.float32))
+
+    def get_last_fit_centroid(self):
+        """Return the most recently fitted centroid (channel), or None."""
+        txt = self.lbl_fit_centroid.text()
+        # Format: "Centroid: 312.447"
+        try:
+            return float(txt.split(":")[1].strip().split()[0])
+        except (IndexError, ValueError):
+            return None
+
+# ---------------------------------------------------------------------------
+# Phase 7.6: Calibration Dialog
+# ---------------------------------------------------------------------------
+class CalibrationDialog(QDialog):
+    """
+    Energy calibration dialog.
+    Workflow:
+      1. Click 'Add from fit' to pull the last Gaussian centroid.
+      2. Type the corresponding energy (keV) in the Energy column.
+      3. Repeat for each peak (minimum 2 for linear, 3 for quadratic).
+      4. Click 'Fit Calibration' to compute the polynomial.
+      5. Click 'Apply to spectrum' to switch the x-axis to keV.
+      6. Optionally save the calibration to a .cal JSON file.
+    """
+    DARK = """
+        QDialog, QWidget { background:#141414; color:#ddd; }
+        QGroupBox {
+            border:1px solid #252525; border-radius:6px;
+            margin-top:8px; font-size:9pt; color:#555;
+        }
+        QGroupBox::title { subcontrol-origin:margin; left:10px; padding:0 4px; }
+        QTableWidget {
+            background:#0d0d0d; color:#ccc; gridline-color:#222;
+            font-size:9pt; border:none;
+        }
+        QTableWidget::item:alternate { background:#111111; }
+        QTableWidget::item:selected  { background:#1a0028; }
+        QHeaderView::section {
+            background:#1a1a1a; color:#888; border:1px solid #222;
+            padding:2px; font-size:8pt;
+        }
+        QLineEdit {
+            background:#1e1e1e; color:#eee; border:1px solid #333;
+            border-radius:3px; padding:2px 5px;
+        }
+        QRadioButton { color:#aaa; }
+        QLabel { color:#ccc; }
+    """
+
+    def __init__(self, parent, spectrum_panel):
+        super().__init__(parent)
+        self._sp   = spectrum_panel   # SpectrumPanel reference
+        self._poly = None
+        self.setWindowTitle("Energy Calibration")
+        self.setMinimumWidth(560)
+        self.setMinimumHeight(480)
+        self.setStyleSheet(self.DARK)
+        self._build()
+
+    # ── Build UI ────────────────────────────────────────────────────────────────────
+    def _build(self):
+        root = QVBoxLayout(self)
+        root.setSpacing(10)
+        root.setContentsMargins(14, 14, 14, 10)
+
+        # ── Title
+        title = QLabel(
+            "<b style='color:#bb88ff'>📐 Energy Calibration</b>"
+            "<span style='color:#444; font-size:9pt'> — assign keV to fitted peaks</span>"
+        )
+        title.setFont(QFont("Sans", 11))
+        root.addWidget(title)
+
+        sep = QFrame(); sep.setFrameShape(QFrame.HLine)
+        sep.setStyleSheet("color:#222;"); root.addWidget(sep)
+
+        # ── Calibration point table
+        cal_grp = QGroupBox("Calibration Points")
+        cg = QVBoxLayout(cal_grp)
+
+        self.cal_table = QTableWidget(0, 3)
+        self.cal_table.setHorizontalHeaderLabels(
+            ["Centroid (ch)", "Energy (keV)", "Residual (keV)"]
+        )
+        self.cal_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.cal_table.setMinimumHeight(150)
+        self.cal_table.setAlternatingRowColors(True)
+        self.cal_table.setSelectionBehavior(QTableWidget.SelectRows)
+        cg.addWidget(self.cal_table)
+
+        btn_row = QHBoxLayout()
+        self.btn_add = self._small_btn("+ Add from fit", "#bb88ff", "#1a0d2a")
+        self.btn_add.clicked.connect(self._add_from_fit)
+        btn_row.addWidget(self.btn_add)
+
+        self.btn_add_manual = self._small_btn("+ Manual entry", "#888888", "#1a1a1a")
+        self.btn_add_manual.clicked.connect(self._add_manual)
+        btn_row.addWidget(self.btn_add_manual)
+
+        self.btn_remove = self._small_btn("− Remove selected", "#883333", "#220000")
+        self.btn_remove.clicked.connect(self._remove_selected)
+        btn_row.addWidget(self.btn_remove)
+        btn_row.addStretch()
+        cg.addLayout(btn_row)
+        root.addWidget(cal_grp)
+
+        # ── Fit options
+        opt_row = QHBoxLayout()
+        opt_row.addWidget(QLabel("Polynomial degree:"))
+        self._deg_grp = QButtonGroup(self)
+        self.rad_lin  = QRadioButton("Linear  (E = a·ch + b)")
+        self.rad_quad = QRadioButton("Quadratic  (E = a·ch² + b·ch + c)")
+        self.rad_lin.setChecked(True)
+        self._deg_grp.addButton(self.rad_lin,  1)
+        self._deg_grp.addButton(self.rad_quad, 2)
+        opt_row.addWidget(self.rad_lin)
+        opt_row.addWidget(self.rad_quad)
+        opt_row.addStretch()
+        root.addLayout(opt_row)
+
+        # Fit button + equation display
+        fit_row = QHBoxLayout()
+        self.btn_fit = self._small_btn("📈 Fit Calibration", "#44cc88", "#002211")
+        self.btn_fit.setFixedWidth(130)
+        self.btn_fit.clicked.connect(self._run_fit)
+        fit_row.addWidget(self.btn_fit)
+
+        self.lbl_equation = QLabel("")
+        self.lbl_equation.setStyleSheet(
+            "color:#44cc88; font-size:9pt; font-family:monospace;"
+        )
+        fit_row.addWidget(self.lbl_equation)
+        fit_row.addStretch()
+
+        self.lbl_rms = QLabel("")
+        self.lbl_rms.setStyleSheet("color:#888; font-size:9pt;")
+        fit_row.addWidget(self.lbl_rms)
+        root.addLayout(fit_row)
+
+        sep2 = QFrame(); sep2.setFrameShape(QFrame.HLine)
+        sep2.setStyleSheet("color:#222;"); root.addWidget(sep2)
+
+        # ── Apply + file buttons
+        bottom = QHBoxLayout()
+
+        self.btn_apply = self._small_btn("✅ Apply to spectrum", "#44cc88", "#002211")
+        self.btn_apply.setEnabled(False)
+        self.btn_apply.clicked.connect(self._apply)
+        bottom.addWidget(self.btn_apply)
+
+        self.btn_remove_cal = self._small_btn("❌ Remove calibration", "#883333", "#220000")
+        self.btn_remove_cal.clicked.connect(self._remove_cal)
+        bottom.addWidget(self.btn_remove_cal)
+
+        bottom.addSpacing(20)
+
+        self.btn_save = self._small_btn("💾 Save .cal", "#5588cc", "#001122")
+        self.btn_save.setEnabled(False)
+        self.btn_save.clicked.connect(self._save_cal)
+        bottom.addWidget(self.btn_save)
+
+        self.btn_load = self._small_btn("📂 Load .cal", "#5588cc", "#001122")
+        self.btn_load.clicked.connect(self._load_cal)
+        bottom.addWidget(self.btn_load)
+
+        bottom.addStretch()
+
+        self.btn_close = QPushButton("Close")
+        self.btn_close.clicked.connect(self.accept)
+        self.btn_close.setStyleSheet(
+            "QPushButton{color:#666;background:#1a1a1a;border:1px solid #333;"
+            "border-radius:4px;padding:3px 14px;}"
+            "QPushButton:hover{color:#aaa;}"
+        )
+        bottom.addWidget(self.btn_close)
+        root.addLayout(bottom)
+
+        # Pre-populate from any existing calibration points (if dialog re-opened)
+        self._populate_from_existing()
+
+    @staticmethod
+    def _small_btn(text, fg, bg):
+        b = QPushButton(text)
+        b.setStyleSheet(
+            f"QPushButton{{color:{fg};background:{bg};border:1px solid {fg};"
+            f"border-radius:4px;padding:3px 10px;font-size:9pt;}}"
+            f"QPushButton:hover{{background:{fg};color:#000;}}"
+            f"QPushButton:disabled{{color:#333;background:#111;border-color:#222;}}"
+        )
+        return b
+
+    # ── Point management ──────────────────────────────────────────────────────────────
+    def _add_from_fit(self):
+        """Pull the last Gaussian centroid from the spectrum panel."""
+        ch = self._sp.get_last_fit_centroid()
+        if ch is None:
+            QMessageBox.information(
+                self, "No fit",
+                "Fit a peak first (Phase 7.5) then click '+ Add from fit'."
+            )
+            return
+        self._add_row(f"{ch:.3f}", "")
+
+    def _add_manual(self):
+        """Add a blank row for manual entry."""
+        self._add_row("", "")
+
+    def _add_row(self, centroid_str: str, energy_str: str):
+        r = self.cal_table.rowCount()
+        self.cal_table.insertRow(r)
+        for col, val in enumerate([centroid_str, energy_str, ""]):
+            item = QTableWidgetItem(val)
+            item.setTextAlignment(Qt.AlignCenter)
+            if col == 2:  # residual — not editable
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                item.setForeground(QColor("#666"))
+            self.cal_table.setItem(r, col, item)
+
+    def _remove_selected(self):
+        rows = sorted(
+            {i.row() for i in self.cal_table.selectedItems()}, reverse=True
+        )
+        for r in rows:
+            self.cal_table.removeRow(r)
+
+    def _populate_from_existing(self):
+        """If spectrum panel already has a calibration, pre-fill points."""
+        # No persistent state yet — dialog starts empty each time
+        pass
+
+    # ── Calibration fit ───────────────────────────────────────────────────────────────
+    def _collect_points(self):
+        """Read centroid + energy from table. Returns (channels, energies) arrays."""
+        chs, engs = [], []
+        for r in range(self.cal_table.rowCount()):
+            try:
+                ch  = float(self.cal_table.item(r, 0).text())
+                eng = float(self.cal_table.item(r, 1).text())
+                chs.append(ch); engs.append(eng)
+            except (ValueError, AttributeError):
+                pass
+        return np.array(chs), np.array(engs)
+
+    def _run_fit(self):
+        ch_arr, eng_arr = self._collect_points()
+        deg = 2 if self.rad_quad.isChecked() else 1
+        min_pts = deg + 1
+
+        if len(ch_arr) < min_pts:
+            QMessageBox.warning(
+                self, "Not enough points",
+                f"{deg}° polynomial needs at least {min_pts} points."
+            )
+            return
+
+        coeffs = np.polyfit(ch_arr, eng_arr, deg)
+        self._poly = np.poly1d(coeffs)
+
+        # Residuals
+        fitted  = self._poly(ch_arr)
+        resids  = eng_arr - fitted
+        rms     = float(np.sqrt(np.mean(resids**2)))
+
+        # Update residual column
+        for r in range(self.cal_table.rowCount()):
+            try:
+                ch  = float(self.cal_table.item(r, 0).text())
+                eng = float(self.cal_table.item(r, 1).text())
+            except (ValueError, AttributeError):
+                continue
+            res = eng - self._poly(ch)
+            item = QTableWidgetItem(f"{res:+.4f}")
+            item.setTextAlignment(Qt.AlignCenter)
+            item.setForeground(
+                QColor("#ff4444") if abs(res) > 0.5 else QColor("#44cc88")
+            )
+            item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+            self.cal_table.setItem(r, 2, item)
+
+        # Show equation
+        if deg == 1:
+            a, b = coeffs
+            eq = f"E = {a:.6g}·ch + {b:.6g} keV"
+        else:
+            a, b, c = coeffs
+            eq = f"E = {a:.4g}·ch² + {b:.6g}·ch + {c:.6g} keV"
+        self.lbl_equation.setText(eq)
+        self.lbl_rms.setText(f"RMS: {rms:.4f} keV")
+
+        self.btn_apply.setEnabled(True)
+        self.btn_save.setEnabled(True)
+
+    # ── Apply / remove ─────────────────────────────────────────────────────────────────
+    def _apply(self):
+        if self._poly is None:
+            return
+        deg = 2 if self.rad_quad.isChecked() else 1
+        self._sp.apply_calibration(self._poly, deg)
+
+    def _remove_cal(self):
+        self._sp.remove_calibration()
+
+    # ── Save / load ────────────────────────────────────────────────────────────────────
+    def _save_cal(self):
+        if self._poly is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Calibration", "calibration.cal",
+            "Calibration files (*.cal);;All files (*)"
+        )
+        if not path:
+            return
+        ch_arr, eng_arr = self._collect_points()
+        deg = 2 if self.rad_quad.isChecked() else 1
+        data = {
+            "degree":    deg,
+            "coeffs":    list(self._poly.coeffs.tolist()),
+            "centroids": ch_arr.tolist(),
+            "energies":  eng_arr.tolist(),
+            "equation":  self.lbl_equation.text(),
+            "rms_kev":   self.lbl_rms.text(),
+        }
+        import json
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+        QMessageBox.information(self, "Saved", f"Calibration saved to:\n{path}")
+
+    def _load_cal(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load Calibration", "",
+            "Calibration files (*.cal);;All files (*)"
+        )
+        if not path:
+            return
+        import json
+        try:
+            with open(path) as f:
+                data = json.load(f)
+            coeffs   = np.array(data["coeffs"])
+            centroids = data["centroids"]
+            energies  = data["energies"]
+        except Exception as e:
+            QMessageBox.critical(self, "Load failed", str(e))
+            return
+
+        self._poly = np.poly1d(coeffs)
+        self.cal_table.setRowCount(0)
+        for ch, eng in zip(centroids, energies):
+            self._add_row(f"{ch:.3f}", f"{eng}")
+
+        deg = data.get("degree", len(coeffs) - 1)
+        if deg == 2:
+            self.rad_quad.setChecked(True)
+        else:
+            self.rad_lin.setChecked(True)
+
+        self.lbl_equation.setText(data.get("equation", ""))
+        self.lbl_rms.setText(data.get("rms_kev", ""))
+        self.btn_apply.setEnabled(True)
+        self.btn_save.setEnabled(True)
+        QMessageBox.information(
+            self, "Loaded",
+            f"Calibration loaded from:\n{path}\n"
+            f"Click 'Apply to spectrum' to activate."
+        )
+
 
 # ---------------------------------------------------------------------------
 # Main window — assembles all panels
@@ -956,7 +1377,7 @@ class LampsDashboard(QMainWindow):
 # Entry point
 # ---------------------------------------------------------------------------
 def main():
-    parser = argparse.ArgumentParser(description="LAMPS Dashboard (Phase 7.1–7.5)")
+    parser = argparse.ArgumentParser(description="LAMPS Dashboard (Phase 7.1–7.6)")
     parser.add_argument("--prefix", default=DEFAULT_PREFIX)
     parser.add_argument("--ioc",    default=DEFAULT_IOC)
     args = parser.parse_args()
