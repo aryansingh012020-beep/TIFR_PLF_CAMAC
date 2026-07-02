@@ -120,15 +120,22 @@ class EpicsProxy:
     def get_waveform(self, suffix, nmax=MAX_CHANNELS):
         pv = self._pv(suffix)
         if pv is None:
-            return np.zeros(nmax, dtype=np.uint32)
+            return np.zeros(nmax, dtype=np.float32)
         try:
-            v = pv.get(timeout=0.1, use_monitor=False)
-            if v is None:
-                return np.zeros(nmax, dtype=np.uint32)
-            a = np.asarray(v, dtype=np.uint64)
-            return a[:nmax] if len(a) >= nmax else np.pad(a, (0, nmax - len(a)))
+            v = pv.get(timeout=0.15, use_monitor=False)
+            # PV not yet connected or returned empty array
+            if v is None or (hasattr(v, '__len__') and len(v) == 0):
+                return np.zeros(nmax, dtype=np.float32)
+            # DBR_LONG (int32) data from bridge — keep as float64,
+            # clip any wrap-around negatives to 0 before returning.
+            a = np.asarray(v, dtype=np.float64)
+            a = np.maximum(a, 0)
+            if len(a) >= nmax:
+                return a[:nmax].astype(np.float32)
+            else:
+                return np.pad(a, (0, nmax - len(a))).astype(np.float32)
         except Exception:
-            return np.zeros(nmax, dtype=np.uint32)
+            return np.zeros(nmax, dtype=np.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -597,8 +604,15 @@ class SpectrumPanel(QGroupBox):
     # ── Public API used by the main window ──────────────────────────────────
     def update_spectrum(self, data: np.ndarray):
         """Set new spectrum data and refresh plot + ROI + peak markers."""
-        self._data = data.astype(np.float32)
-        nz = int(np.max(np.nonzero(data)[0])) + 1 if data.any() else 64
+        # Guard: ignore empty arrays (PV not yet connected)
+        if data is None or (hasattr(data, '__len__') and len(data) == 0):
+            return
+        self._data = np.asarray(data, dtype=np.float32)
+        nonzero_idx = np.nonzero(self._data)[0]
+        if nonzero_idx.size > 0:
+            nz = int(nonzero_idx[-1]) + 1
+        else:
+            nz = 64
         nz = max(nz, 64)
         disp = self._data[:nz]
         x    = np.arange(nz, dtype=np.float32)
