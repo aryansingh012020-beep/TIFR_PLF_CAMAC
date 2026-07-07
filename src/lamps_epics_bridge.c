@@ -102,8 +102,13 @@
 
 /* If the SHM generation counter hasn't advanced for this many seconds,
  * LAMPS has likely stopped and restarted (unlinked+recreated the segment).
- * The bridge will close its stale mapping and reconnect.                   */
-#define STALE_TIMEOUT_SEC  3
+ * The bridge will close its stale mapping and reconnect.
+ *
+ * NOTE: The LAMPS simulator runs at ~50 evt/s → ~0.5 buffers/s, so the
+ * SHM generation counter only advances every ~2 seconds.  The timeout
+ * must be well above 2 s.  Set to 15 s so a slow LAMPS run (real hardware
+ * at low rate) also stays connected.                                       */
+#define STALE_TIMEOUT_SEC  15
 
 /* Retry interval while waiting for LAMPS SHM to appear (or reappear).     */
 #define RETRY_INTERVAL_US  200000   /* 200 ms */
@@ -273,8 +278,27 @@ static void publish(const LampsShmBlock *blk,
 
     /* 1D spectra */
     for (i = 0; i < blk->n_oned && i < MAX_SPEC_PVS; ++i) {
-        const uint32_t *data = &blk->oned_data[i * LAMPS_MAX_CHAN_EPICS];
-        put_waveform_u32(spec_pv_start + i, data, blk->oned_chan[i]);
+        const uint32_t *src   = &blk->oned_data[i * LAMPS_MAX_CHAN_EPICS];
+        uint32_t        nchan = blk->oned_chan[i];
+
+        if (nchan == 0 || nchan >= LAMPS_MAX_CHAN_EPICS) {
+            /* Already at full resolution — write as-is */
+            put_waveform_u32(spec_pv_start + i, src, LAMPS_MAX_CHAN_EPICS);
+        } else {
+            /* LAMPS stores nchan bins but its GUI displays them on a
+             * LAMPS_MAX_CHAN_EPICS (8192) channel axis.  For example with
+             * nchan=1024 each bin occupies 8 display channels.
+             * Expand here so the EPICS waveform has the same channel
+             * positions that the LAMPS window shows.                    */
+            uint32_t expanded[LAMPS_MAX_CHAN_EPICS];
+            uint32_t scale = LAMPS_MAX_CHAN_EPICS / nchan;
+            uint32_t ch, k;
+            memset(expanded, 0, sizeof(expanded));
+            for (ch = 0; ch < nchan; ++ch)
+                for (k = 0; k < scale; ++k)
+                    expanded[ch * scale + k] = src[ch];
+            put_waveform_u32(spec_pv_start + i, expanded, LAMPS_MAX_CHAN_EPICS);
+        }
     }
 
 #ifdef HAVE_EPICS
@@ -479,7 +503,11 @@ int main(int argc, char *argv[])
     }
     if (!s_running) { free(snap); return 0; }
 
-    /* Take an initial snapshot to discover how many spectra/scalers exist  */
+    /* Take one snapshot to detect how many scalers are present.
+     * We do NOT wait for n_oned > 0 here — the 8 spectrum PVs
+     * (SPEC1D:001 through 008) are permanently defined in lamps.db
+     * and we always register all of them.  publish() will naturally
+     * skip writing spectrum data whenever blk->n_oned == 0.            */
     if (lamps_shm_snapshot(snap) < 0) {
         fprintf(stderr, "[BRIDGE] Snapshot failed — is LAMPS running?\n");
         lamps_shm_close();
@@ -498,7 +526,7 @@ int main(int argc, char *argv[])
     pv_init("EVENT_RATE");
     /* assert: s_npv == PV_FIXED_COUNT */
 
-    /* Register scaler PVs */
+    /* Register scaler PVs based on the snapshot */
     scaler_pv_start = s_npv;
     for (i = 0; i < snap->n_scaler && i < MAX_SCALER_PVS; ++i) {
         char suf[MAX_PV_NAME];
@@ -509,19 +537,19 @@ int main(int argc, char *argv[])
         pv_init(suf);
     }
 
-    /* Register 1D spectrum waveform PVs */
+    /* Always register all 8 spectrum PVs — they exist permanently in
+     * lamps.db as SPEC1D:001 through SPEC1D:008.  The publish() function
+     * only writes data for indices 0..blk->n_oned-1, so registering all
+     * 8 up front is safe and avoids any startup ordering dependency.    */
     spec_pv_start = s_npv;
-    for (i = 0; i < snap->n_oned && i < MAX_SPEC_PVS; ++i) {
+    for (i = 0; i < MAX_SPEC_PVS; ++i) {
         char suf[MAX_PV_NAME];
-        if (strlen(snap->oned_name[i]) > 0)
-            snprintf(suf, sizeof(suf), "SPEC1D:%s", snap->oned_name[i]);
-        else
-            snprintf(suf, sizeof(suf), "SPEC1D:%03u", i + 1);
+        snprintf(suf, sizeof(suf), "SPEC1D:%03u", i + 1);
         pv_init(suf);
     }
 
     fprintf(stderr,
-            "[BRIDGE] %u scalers, %u 1D spectra → %d total PVs\n",
+            "[BRIDGE] %u scalers, %u 1D spectra (SHM) → %d total PVs\n",
             snap->n_scaler, snap->n_oned, s_npv);
 
     /* Connect monitoring PVs to Channel Access IOC */
@@ -562,24 +590,17 @@ int main(int argc, char *argv[])
                  *
                  * Case A — generation frozen AND acq_state is STOP/PAUSE:
                  *   Acquisition ended cleanly.  Publish STATUS=STOPPED
-                 *   with the final event count (do NOT zero any PVs).
-                 *   Stay attached — wait for generation to advance again
-                 *   (meaning LAMPS started a new acquisition).
-                 *
-                 * Case B — generation frozen AND acq_state is RUN:
-                 *   Hardware or software crash while acquiring.
-                 *   Wait STALE_TIMEOUT_SEC, then close+reconnect and
-                 *   push STATUS=OFFLINE.
-                 * ------------------------------------------------------- */
+                 *   with the final event count (do NOT zero
+                 */
                 int acq_active = (snap->acq_state == LAMPS_ACQ_RUN);
 
                 if (snap->generation != last_gen) {
-                    /* Generation is advancing — live data.               */
-                    last_gen      = snap->generation;
-                    last_gen_time = time(NULL);
+                    /* Generation is advancing — live data. */
+                    last_gen       = snap->generation;
+                    last_gen_time  = time(NULL);
                     stopped_logged = 0;
 
-                    /* Log state transitions (once per transition).       */
+                    /* Log state transitions (once per transition). */
                     if (snap->acq_state != prev_state) {
                         const char *st =
                             (snap->acq_state == LAMPS_ACQ_RUN)   ? "RUNNING" :
@@ -599,8 +620,14 @@ int main(int argc, char *argv[])
                     }
 
                 } else if (!acq_active) {
-                    /* Case A: acquisition stopped cleanly, gen frozen.
-                     * Publish STOPPED with final counts — do NOT zero.  */
+                    /* Case A: acquisition stopped cleanly, generation frozen.
+                     * Publish STATUS=STOPPED with final counts.
+                     *
+                     * ALSO: watch for LAMPS being killed and restarted.
+                     * When LAMPS exits it calls shm_unlink(). On Linux the
+                     * old mapping stays alive, so the generation never changes
+                     * again. After STALE_TIMEOUT_SEC we close+reopen the SHM
+                     * so we catch the next LAMPS session automatically.      */
                     if (!stopped_logged) {
                         fprintf(stderr,
                                 "[BRIDGE] Acquisition stopped — "
@@ -611,6 +638,33 @@ int main(int argc, char *argv[])
                         stopped_logged = 1;
                     }
                     push_stopped(snap, scaler_pv_start, spec_pv_start);
+
+                    if (difftime(time(NULL), last_gen_time) >= STALE_TIMEOUT_SEC) {
+                        fprintf(stderr,
+                                "[BRIDGE] SHM frozen %d s while STOPPED"
+                                " — LAMPS may have restarted. Reconnecting...\n",
+                                STALE_TIMEOUT_SEC);
+                        lamps_shm_close();
+                        stopped_logged = 0;
+                        prev_state     = LAMPS_ACQ_STOP;
+                        {
+                            int rc = 0;
+                            while (s_running) {
+                                if (lamps_shm_open_read() == 0) {
+                                    fprintf(stderr, "[BRIDGE] SHM reconnected.\n");
+                                    last_gen      = (uint64_t)-1;
+                                    last_gen_time = time(NULL);
+                                    break;
+                                }
+                                if ((++rc % RECONNECT_LOG_INTERVAL) == 0)
+                                    fprintf(stderr,
+                                            "[BRIDGE] Waiting for LAMPS SHM"
+                                            " (%d retries)...\n", rc);
+                                usleep(RETRY_INTERVAL_US);
+                            }
+                        }
+                        continue;
+                    }
                     usleep(sleep_us);
                     continue;
 

@@ -50,6 +50,18 @@ except ImportError:
     SCIPY_AVAILABLE = False
     print("[WARN] scipy not found — peak search/fitting disabled", file=sys.stderr)
 
+# To allow remote connections, EPICS_CA_ADDR_LIST must be set BEFORE pyepics is imported.
+import os
+_remote_ioc = "localhost"
+if "--ioc" in sys.argv:
+    try:
+        _idx = sys.argv.index("--ioc")
+        _remote_ioc = sys.argv[_idx + 1]
+    except (ValueError, IndexError):
+        pass
+os.environ.setdefault("EPICS_CA_ADDR_LIST", _remote_ioc)
+os.environ.setdefault("EPICS_CA_AUTO_ADDR_LIST", "YES")
+
 try:
     import epics
     EPICS_AVAILABLE = True
@@ -268,7 +280,11 @@ class EpicsProxy:
         if pv is None:
             return np.zeros(nmax, dtype=np.float32)
         try:
-            v = pv.get(timeout=0.15, use_monitor=False)
+            # If PV hasn't connected yet, wait up to 2 s (first read after
+            # dashboard start — the waveform PV is large and slow to subscribe).
+            if not pv.connected:
+                pv.wait_for_connection(timeout=2.0)
+            v = pv.get(timeout=0.5, use_monitor=False)
             # PV not yet connected or returned empty array
             if v is None or (hasattr(v, '__len__') and len(v) == 0):
                 return np.zeros(nmax, dtype=np.float32)
@@ -567,9 +583,12 @@ class SpectrumPanel(QGroupBox):
         row1.addWidget(QLabel("Detector:"))
         self.det_combo = QComboBox()
         self.det_combo.setFixedWidth(130)
-        for i in range(1, MAX_DETECTORS + 1):
-            self.det_combo.addItem(f"SPEC1D:{i:03d}", i)
+        self.det_combo.setStyleSheet("font-weight:bold; color:#ccc; background:#222;")
+        for i in range(MAX_DETECTORS):
+            # 1-based indexing for EPICS PV names (SPEC1D:001 to 008)
+            self.det_combo.addItem(f"SPEC1D:{i+1:03d}", i+1)
         self.det_combo.currentIndexChanged.connect(self._on_det_changed)
+        self._current_det = 1
         row1.addWidget(self.det_combo)
         row1.addSpacing(16)
 
