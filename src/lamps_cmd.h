@@ -84,6 +84,10 @@ uint32_t lamps_cmd_poll(void);
  * buf is always NUL-terminated.  Returns 0 on success, -1 if not attached. */
 int  lamps_cmd_get_run_name(char *buf, size_t len);
 
+/* Check if the command SHM is currently attached (non-zero = yes).
+ * Used by LAMPS to lazy-retry connection when bridge starts after LAMPS. */
+int  lamps_cmd_is_attached(void);
+
 /* Both sides: unmap (writer also unlinks). */
 void lamps_cmd_close(void);
 

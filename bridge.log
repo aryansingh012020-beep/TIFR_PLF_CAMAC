@@ -1,0 +1,22 @@
+==========================================
+ LAMPS EPICS Bridge
+==========================================
+  EPICS_BASE : /home/linac/epics/base
+  Bridge     : ./lamps_epics_bridge
+  Args       : 
+==========================================
+  Make sure softIoc and LAMPS are running.
+  Ctrl-C to stop.
+
+LAMPS EPICS Bridge — prefix=LAMPS  rate=5 Hz
+[BRIDGE] Waiting for LAMPS shared memory segment...
+[LAMPS BRIDGE] shm_open(read): No such file or directory
+[LAMPS BRIDGE] shm_open(read): No such file or directory
+[LAMPS BRIDGE] shm_open(read): No such file or directory
+[LAMPS BRIDGE] shm_open(read): No such file or directory
+[LAMPS BRIDGE] shm_open(read): No such file or directory
+[LAMPS BRIDGE] shm_open(read): No such file or directory
+[LAMPS BRIDGE] shm_open(read): No such file or directory
+[LAMPS BRIDGE] shm_open(read): No such file or directory
+[LAMPS BRIDGE] shm_open(read): No such file or directory
+[LAMPS BRIDGE] shm_open(read): No such file or directory

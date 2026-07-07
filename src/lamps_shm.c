@@ -57,11 +57,29 @@ extern gdouble         StartTime;
 /* =========================================================================
  * lamps_shm_open_write()
  * Create and mmap the shared memory segment (writer / LAMPS process).
+ *
+ * Idempotent: if already mapped (e.g., called from main() at startup AND
+ * again from daq_acquire_data() at acquisition start), the second call just
+ * resets the header to STOPPED/generation=0 without unlinking the segment.
+ * This keeps the bridge's live mmap valid across the reset.
+ *
  * Returns 0 on success, -1 on error.
  * ========================================================================= */
 int lamps_shm_open_write(void)
 {
     int fd;
+
+    /* Already mapped — just reset the header for a fresh acquisition.
+     * The bridge stays connected; it will see generation reset to 0.    */
+    if (s_shm && s_shm != MAP_FAILED) {
+        memset(s_shm, 0, s_shm_size);
+        s_shm->magic      = LAMPS_SHM_MAGIC;
+        s_shm->version    = LAMPS_SHM_VERSION;
+        s_shm->generation = 0;
+        fprintf(stderr,
+                "[LAMPS SHM] SHM header reset for new acquisition\n");
+        return 0;
+    }
 
     shm_unlink(LAMPS_SHM_NAME);   /* clean up any stale segment             */
 

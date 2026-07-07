@@ -9,11 +9,19 @@ Phase 7.4: Peak search (scipy.signal.find_peaks, markers, peak table)
 Phase 7.5: Gaussian peak fitting (scipy.optimize.curve_fit, fit overlay, results)
 Phase 7.6: Calibration (energy assignment, polynomial fit, keV axis, save/load)
 
+Sim mode: Add --sim flag (or auto-detected when EPICS IOC unreachable).
+  Generates the same realistic Gaussian spectrum as sim_shm.c:
+    Peak A — Co-60  (1173 keV) at ch 512,  FWHM ~20 ch
+    Peak B — Cs-137 (662  keV) at ch 1024, FWHM ~15 ch
+    Peak C — K-40   (1461 keV) at ch 2048, FWHM ~25 ch
+    + Compton continuum + flat noise floor
+  START / STOP / RESET all work in sim mode.
+
 Requirements:
   pip install pyqtgraph pyepics PyQt5
 
 Usage:
-  python3 lamps_dashboard.py [--prefix LAMPS] [--ioc localhost]
+  python3 lamps_dashboard.py [--prefix LAMPS] [--ioc localhost] [--sim]
 """
 
 import sys
@@ -47,7 +55,7 @@ try:
     EPICS_AVAILABLE = True
 except ImportError:
     EPICS_AVAILABLE = False
-    print("[WARN] pyepics not found — running in stub mode", file=sys.stderr)
+    print("[WARN] pyepics not found — will use simulated data", file=sys.stderr)
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -64,8 +72,146 @@ STATUS_COLORS = {
     "PAUSED":   ("#ffcc00", "#2a2000"),
     "STOPPED":  ("#aaaaaa", "#1a1a1a"),
     "OFFLINE":  ("#ff4444", "#2a0000"),
+    "SIM":      ("#00d4ff", "#001a22"),
     "--":       ("#555555", "#111111"),
 }
+
+
+# ---------------------------------------------------------------------------
+# Simulated Data Backend
+# Mirrors sim_shm.c exactly: same peaks, same Poisson noise, seeded PRNG.
+# ---------------------------------------------------------------------------
+class SimulatedBackend:
+    """
+    Self-contained simulation that generates the same realistic gamma spectrum
+    as the sim_shm C program.  Thread-safe: all mutable state is protected
+    by a lock; the poller thread calls tick() and the GUI calls get_*().
+    """
+    N_CHAN  = 8192
+    SIM_HZ  = 5      # ticks per second
+
+    def __init__(self):
+        import threading
+        self._lock        = threading.Lock()
+        self._rng_state   = 0xdeadbeefcafe1234  # same seed as sim_shm.c
+        self._spectrum    = np.zeros(self.N_CHAN, dtype=np.uint32)
+        self._events      = 0
+        self._tick        = 0
+        self._state       = "STOPPED"   # "RUNNING" | "STOPPED"
+        self._run_name    = ""
+        self._start_tick  = 0
+
+    # ── Simple XOR-shift PRNG (same as sim_shm.c) ────────────────────────────
+    def _rng_uniform(self):
+        x = self._rng_state & 0xFFFFFFFFFFFFFFFF
+        x ^= (x << 13) & 0xFFFFFFFFFFFFFFFF
+        x ^= (x >> 7)  & 0xFFFFFFFFFFFFFFFF
+        x ^= (x << 17) & 0xFFFFFFFFFFFFFFFF
+        self._rng_state = x
+        return (x & 0xFFFFFFFF) / 4294967296.0
+
+    def _poisson(self, lam):
+        """Poisson variate — Normal approx for lam > 30."""
+        if lam <= 0.0:
+            return 0
+        if lam > 30.0:
+            u1 = max(self._rng_uniform(), 1e-12)
+            u2 = self._rng_uniform()
+            z  = (-2.0 * np.log(u1)) ** 0.5 * np.cos(6.28318530 * u2)
+            n  = int(lam + z * (lam ** 0.5) + 0.5)
+            return max(0, n)
+        k = 0
+        L = np.exp(-lam)
+        p = 1.0
+        while True:
+            p *= self._rng_uniform()
+            k += 1
+            if p <= L:
+                break
+        return k - 1
+
+    @staticmethod
+    def _gauss(ch_arr, mu, fwhm, amplitude):
+        """Gaussian shape — vectorised over ch_arr."""
+        sigma = fwhm / 2.3548
+        return amplitude * np.exp(-0.5 * ((ch_arr - mu) / sigma) ** 2)
+
+    # ── Called once per SIM_HZ tick from the poller thread ──────────────────
+    def tick(self):
+        with self._lock:
+            if self._state != "RUNNING":
+                return
+
+            ch = np.arange(self.N_CHAN, dtype=np.float64)
+            rate  = self._gauss(ch,  512,  20,  8.0)   # Co-60
+            rate += self._gauss(ch, 1024,  15, 12.0)   # Cs-137
+            rate += self._gauss(ch, 2048,  25,  5.0)   # K-40
+            rate += 0.5 * np.exp(-ch / 1200.0)          # Compton
+            rate += 0.05                                 # noise floor
+
+            # Vectorised Poisson draws — same physics as sim_shm.c, 1000× faster
+            counts = np.random.poisson(rate).astype(np.uint32)
+            self._spectrum += counts
+            new_evts = int(counts.sum())
+
+            self._events += new_evts
+            self._tick   += 1
+
+    # ── Snapshot API (called from poller, safe under lock) ──────────────────
+    def get_metrics(self):
+        with self._lock:
+            if self._state == "RUNNING":
+                elapsed = (self._tick - self._start_tick) / self.SIM_HZ
+                # event_rate: estimate from last tick
+                ev_rate = float(self._events) / max(elapsed, 0.001)
+            else:
+                elapsed = getattr(self, '_stopped_elapsed', 0.0)
+                ev_rate = 0.0
+            return {
+                'status':    self._state,
+                'run_name':  self._run_name,
+                'elapsed':   elapsed if self._state == "RUNNING" else getattr(self, '_stopped_elapsed', None),
+                'total_ev':  self._events if self._events > 0 else None,
+                'ev_rate':   ev_rate if self._state == "RUNNING" else None,
+                'bufs_acq':  self._tick,
+                'bufs_proc': self._tick,
+                'cmd_rn':    self._run_name,
+            }
+
+    def get_spectrum(self, det=1):
+        with self._lock:
+            return self._spectrum.copy().astype(np.float32)
+
+    # ── Control API ──────────────────────────────────────────────────────────
+    def start(self, run_name):
+        with self._lock:
+            self._run_name   = run_name or "SIM_RUN"
+            self._spectrum[:] = 0
+            self._events      = 0
+            self._start_tick  = self._tick
+            self._state       = "RUNNING"
+            print(f"[SIM] START  run_name={self._run_name}", flush=True)
+
+    def stop(self):
+        with self._lock:
+            if self._state == "RUNNING":
+                self._stopped_elapsed = (self._tick - self._start_tick) / self.SIM_HZ
+            self._state = "STOPPED"
+            print("[SIM] STOP", flush=True)
+
+    def reset(self):
+        with self._lock:
+            self._state       = "STOPPED"
+            self._spectrum[:] = 0
+            self._events      = 0
+            self._start_tick  = self._tick
+            self._stopped_elapsed = 0.0
+            print("[SIM] RESET", flush=True)
+
+    @property
+    def is_running(self):
+        with self._lock:
+            return self._state == "RUNNING"
 
 
 # ---------------------------------------------------------------------------
@@ -137,23 +283,42 @@ class EpicsProxy:
         except Exception:
             return np.zeros(nmax, dtype=np.float32)
 
+    def probe_connection(self, timeout=1.0) -> bool:
+        """Quick probe: try to read STATUS PV.  Returns True if connected."""
+        if not EPICS_AVAILABLE:
+            return False
+        try:
+            pv = epics.PV(
+                f"{self.prefix}:STATUS",
+                auto_monitor=False,
+                connection_timeout=timeout,
+                verbose=False,
+            )
+            v = pv.get(timeout=timeout, use_monitor=False)
+            return v is not None
+        except Exception:
+            return False
+
 
 # ---------------------------------------------------------------------------
-# Background EPICS polling thread  (keeps the GUI thread free)
+# Background polling thread  (keeps the GUI thread free)
+# Works with either live EPICS or the SimulatedBackend.
 # ---------------------------------------------------------------------------
 class EpicsPoller(QThread):
     """
-    All caget / get_waveform calls run here — never on the GUI thread.
-    Emits signals that Qt delivers safely across threads.
+    Polls either the EPICS proxy or the SimulatedBackend — never on the GUI
+    thread.  Emits signals that Qt delivers safely across threads.
     """
     metrics_ready  = pyqtSignal(dict)       # fired every REFRESH_MS
     spectrum_ready = pyqtSignal(object)     # fired every SPEC_REFRESH_MS
 
-    def __init__(self, proxy: 'EpicsProxy', parent=None):
+    def __init__(self, proxy: 'EpicsProxy', sim: 'SimulatedBackend | None' = None,
+                 parent=None):
         super().__init__(parent)
         self._proxy      = proxy
+        self._sim        = sim            # None → use EPICS
         self._running    = True
-        self._det        = 1          # current detector index
+        self._det        = 1
         self._tick       = 0
         self._spec_every = max(1, SPEC_REFRESH_MS // REFRESH_MS)  # 2
 
@@ -163,28 +328,46 @@ class EpicsPoller(QThread):
     def stop_polling(self):
         self._running = False
 
+    # ── Sim-mode ticker: advance simulation by one tick every SIM_HZ interval
+    _sim_subtick   = 0
+    _sim_hz_ratio  = max(1, 1000 // (SimulatedBackend.SIM_HZ * REFRESH_MS))  # ticks between sim advances
+
     def run(self):
         while self._running:
-            p = self._proxy
+            if self._sim is not None:
+                # ── Simulated backend ──────────────────────────────────────
+                # Advance simulator at ~5 Hz regardless of poll rate
+                self._sim_subtick = (self._sim_subtick + 1) % max(1, 1000 // (SimulatedBackend.SIM_HZ * REFRESH_MS))
+                if self._sim_subtick == 0:
+                    self._sim.tick()
 
-            # ── Metrics (every tick) ──
-            metrics = {
-                'status':    (p.get('STATUS',       as_string=True, default='--') or '--').strip(),
-                'run_name':  (p.get('RUN_NAME',      as_string=True, default='')  or '').strip(),
-                'elapsed':    p.get('ELAPSED_SEC',   default=None),
-                'total_ev':   p.get('TOTAL_EVENTS',  default=None),
-                'ev_rate':    p.get('EVENT_RATE',    default=None),
-                'bufs_acq':   p.get('BUFS_ACQUIRED',  default=None),
-                'bufs_proc':  p.get('BUFS_PROCESSED', default=None),
-                'cmd_rn':    (p.get('CMD:RUN_NAME',  as_string=True, default='') or '').strip(),
-            }
-            self.metrics_ready.emit(metrics)
+                metrics = self._sim.get_metrics()
+                self.metrics_ready.emit(metrics)
 
-            # ── Spectrum (every N ticks) ──
-            self._tick = (self._tick + 1) % self._spec_every
-            if self._tick == 0:
-                arr = p.get_waveform(f'SPEC1D:{self._det:03d}')
-                self.spectrum_ready.emit(arr)
+                self._tick = (self._tick + 1) % self._spec_every
+                if self._tick == 0:
+                    arr = self._sim.get_spectrum(self._det)
+                    self.spectrum_ready.emit(arr)
+
+            else:
+                # ── Live EPICS backend ─────────────────────────────────────
+                p = self._proxy
+                metrics = {
+                    'status':    (p.get('STATUS',       as_string=True, default='--') or '--').strip(),
+                    'run_name':  (p.get('RUN_NAME',      as_string=True, default='')  or '').strip(),
+                    'elapsed':    p.get('ELAPSED_SEC',   default=None),
+                    'total_ev':   p.get('TOTAL_EVENTS',  default=None),
+                    'ev_rate':    p.get('EVENT_RATE',    default=None),
+                    'bufs_acq':   p.get('BUFS_ACQUIRED',  default=None),
+                    'bufs_proc':  p.get('BUFS_PROCESSED', default=None),
+                    'cmd_rn':    (p.get('CMD:RUN_NAME',  as_string=True, default='') or '').strip(),
+                }
+                self.metrics_ready.emit(metrics)
+
+                self._tick = (self._tick + 1) % self._spec_every
+                if self._tick == 0:
+                    arr = p.get_waveform(f'SPEC1D:{self._det:03d}')
+                    self.spectrum_ready.emit(arr)
 
             self.msleep(REFRESH_MS)
 
@@ -231,9 +414,21 @@ class MetricRow(QWidget):
 # Phase 7.2: Control Panel
 # ---------------------------------------------------------------------------
 class ControlPanel(QGroupBox):
-    def __init__(self, epics_proxy: EpicsProxy):
+    """
+    Run control panel: START / STOP / RESET buttons.
+
+    Emits ``command_issued(str)`` immediately when a button is clicked so
+    the main window can apply an *optimistic UI update* before the EPICS
+    round-trip confirms the state change.  Payload values: "START", "STOP",
+    "RESET".
+    """
+    command_issued = pyqtSignal(str)   # "START" | "STOP" | "RESET"
+
+    def __init__(self, epics_proxy: EpicsProxy,
+                 sim: 'SimulatedBackend | None' = None):
         super().__init__("Run Control")
         self._epics = epics_proxy
+        self._sim   = sim
         self._prefilled = False
         self._build()
 
@@ -301,18 +496,36 @@ class ControlPanel(QGroupBox):
         if not rn:
             self._fb("⚠  Enter a run name first", "#ffcc00"); return
         self._fb("Sending START…", "#aaa")
-        ok = self._epics.put("CMD:RUN_NAME", rn) and self._epics.put("CMD:START", 1)
-        self._fb(f"✓ START  ({rn})" if ok else "✗ caput failed", "#1aff6e" if ok else "#ff4444")
+        if self._sim is not None:
+            self._sim.start(rn)
+            self._fb(f"✓ [SIM] STARTED  ({rn})", "#1aff6e")
+        else:
+            ok = self._epics.put("CMD:RUN_NAME", rn) and self._epics.put("CMD:START", 1)
+            self._fb(f"✓ START  ({rn})" if ok else "✗ caput failed", "#1aff6e" if ok else "#ff4444")
+        # Optimistic: notify main window immediately regardless of EPICS round-trip
+        self.command_issued.emit("START")
 
     def _do_stop(self):
         self._fb("Sending STOP…", "#aaa")
-        ok = self._epics.put("CMD:STOP", 1)
-        self._fb("✓ STOP sent" if ok else "✗ caput failed", "#ffcc00" if ok else "#ff4444")
+        if self._sim is not None:
+            self._sim.stop()
+            self._fb("✓ [SIM] STOPPED", "#ffcc00")
+        else:
+            ok = self._epics.put("CMD:STOP", 1)
+            self._fb("✓ STOP sent" if ok else "✗ caput failed", "#ffcc00" if ok else "#ff4444")
+        # Optimistic: notify main window immediately
+        self.command_issued.emit("STOP")
 
     def _do_reset(self):
         self._fb("Sending RESET…", "#aaa")
-        ok = self._epics.put("CMD:RESET", 1)
-        self._fb("✓ RESET sent" if ok else "✗ caput failed", "#ff8800" if ok else "#ff4444")
+        if self._sim is not None:
+            self._sim.reset()
+            self._fb("✓ [SIM] RESET", "#ff8800")
+        else:
+            ok = self._epics.put("CMD:RESET", 1)
+            self._fb("✓ RESET sent" if ok else "✗ caput failed", "#ff8800" if ok else "#ff4444")
+        # Optimistic: notify main window immediately
+        self.command_issued.emit("RESET")
 
     def _fb(self, msg, color):
         self.lbl_fb.setText(msg)
@@ -1298,11 +1511,14 @@ class CalibrationDialog(QDialog):
 # Main window — assembles all panels
 # ---------------------------------------------------------------------------
 class LampsDashboard(QMainWindow):
-    def __init__(self, proxy: EpicsProxy):
+    def __init__(self, proxy: EpicsProxy,
+                 sim: 'SimulatedBackend | None' = None):
         super().__init__()
         self._epics = proxy
+        self._sim   = sim
         self._rn_prefilled = False
-        self.setWindowTitle(f"LAMPS Dashboard  —  {proxy.prefix}")
+        mode_str = "[SIM MODE]" if sim is not None else f"{proxy.prefix} @ {proxy.ioc}"
+        self.setWindowTitle(f"LAMPS Dashboard  —  {mode_str}")
         self.setMinimumSize(1100, 660)
         self._build_ui()
         self._apply_dark_theme()
@@ -1357,7 +1573,7 @@ class LampsDashboard(QMainWindow):
         ml.addWidget(self.lbl_ts)
         left.addWidget(metrics_box)
 
-        self.ctrl = ControlPanel(self._epics)
+        self.ctrl = ControlPanel(self._epics, sim=self._sim)
         self.ctrl.setFixedWidth(270)
         left.addWidget(self.ctrl)
         left.addStretch()
@@ -1374,8 +1590,15 @@ class LampsDashboard(QMainWindow):
         self.lbl_conn.setStyleSheet("color:#333; font-size:8pt;")
         bot.addWidget(self.lbl_conn)
         bot.addStretch()
-        epics_txt = "pyepics ✓" if EPICS_AVAILABLE else "pyepics ✗ (stub)"
-        epics_col = "#1a8a3e"  if EPICS_AVAILABLE else "#884400"
+        if self._sim is not None:
+            epics_txt = "SIM MODE ● Co-60 ch512 | Cs-137 ch1024 | K-40 ch2048"
+            epics_col = "#00d4ff"
+        elif EPICS_AVAILABLE:
+            epics_txt = "pyepics ✓"
+            epics_col = "#1a8a3e"
+        else:
+            epics_txt = "pyepics ✗ (sim fallback)"
+            epics_col = "#884400"
         lbl_ep = QLabel(epics_txt)
         lbl_ep.setStyleSheet(f"color:{epics_col}; font-size:8pt;")
         bot.addWidget(lbl_ep)
@@ -1402,17 +1625,54 @@ class LampsDashboard(QMainWindow):
         """)
 
     def _start_timers(self):
-        """Start the background EPICS polling thread (replaces QTimers)."""
-        self._poller = EpicsPoller(self._epics, parent=self)
+        """Start the background polling thread (EPICS or sim) and wire signals."""
+        self._poller = EpicsPoller(self._epics, sim=self._sim, parent=self)
         self._poller.metrics_ready.connect(self._refresh_metrics)
         self._poller.spectrum_ready.connect(self._refresh_spectrum)
         self._poller.start()
+        # Optimistic UI update: react to button presses immediately
+        self.ctrl.command_issued.connect(self._on_command_issued)
 
     def closeEvent(self, event):
         """Stop the poller thread cleanly before the window closes."""
         self._poller.stop_polling()
         self._poller.wait(2000)
         super().closeEvent(event)
+
+    # ── Optimistic UI update — fired IMMEDIATELY on button click ────────────
+    def _on_command_issued(self, cmd: str):
+        """
+        Called the instant the user presses START / STOP / RESET.
+        Does *not* wait for the EPICS CA round-trip or SHM update.
+        Gives the operator immediate visual feedback.
+
+        For live EPICS mode, the poller will later confirm (or correct) the
+        state once the bridge publishes updated PVs.
+        """
+        if cmd == "STOP":
+            # Badge → STOPPED, disable STOP, enable START
+            self.status_badge.update("STOPPED")
+            self.ctrl.update_from_status("STOPPED")
+            self.m_event_rate.set("—  (stopped)")
+
+        elif cmd == "RESET":
+            # Badge → STOPPED, disable STOP, enable START
+            self.status_badge.update("STOPPED")
+            self.ctrl.update_from_status("STOPPED")
+            # Clear spectrum immediately so operator sees empty plot
+            self.spec_panel.update_spectrum(np.zeros(MAX_CHANNELS, dtype=np.float32))
+            self.m_total_ev.set("—")
+            self.m_event_rate.set("—")
+            self.m_elapsed.set("—")
+            self.m_bufs_acq.set("—")
+            self.m_bufs_proc.set("—")
+
+        elif cmd == "START":
+            rn = self.ctrl.run_name_edit.text().strip()
+            # Badge → RUNNING, disable START, enable STOP
+            self.status_badge.update("RUNNING")
+            self.ctrl.update_from_status("RUNNING")
+            self.m_run_name.set(rn or "—")
 
     # ── Refresh slots — called via pyqtSignal from EpicsPoller (GUI-thread safe)
     def _refresh_metrics(self, data: dict):
@@ -1446,13 +1706,21 @@ class LampsDashboard(QMainWindow):
 
         self.lbl_ts.setText(f"Updated: {time.strftime('%H:%M:%S')}")
         is_run = (status == "RUNNING")
-        self.lbl_conn.setText(
-            f"● {self._epics.prefix} @ {self._epics.ioc}"
-            if EPICS_AVAILABLE else "● STUB MODE"
-        )
-        self.lbl_conn.setStyleSheet(
-            f"color:{'#1aff6e' if is_run else '#555'}; font-size:8pt;"
-        )
+        if self._sim is not None:
+            self.lbl_conn.setText(
+                f"● SIM  run={data.get('run_name','') or 'none'}"
+            )
+            self.lbl_conn.setStyleSheet(
+                f"color:{'#1aff6e' if is_run else '#00d4ff'}; font-size:8pt;"
+            )
+        else:
+            self.lbl_conn.setText(
+                f"● {self._epics.prefix} @ {self._epics.ioc}"
+                if EPICS_AVAILABLE else "● SIM (EPICS unavailable)"
+            )
+            self.lbl_conn.setStyleSheet(
+                f"color:{'#1aff6e' if is_run else '#555'}; font-size:8pt;"
+            )
 
     def _refresh_spectrum(self, data):
         # Keep poller's detector in sync with the combo box selection
@@ -1464,17 +1732,52 @@ class LampsDashboard(QMainWindow):
 # Entry point
 # ---------------------------------------------------------------------------
 def main():
-    parser = argparse.ArgumentParser(description="LAMPS Dashboard (Phase 7.1–7.6)")
-    parser.add_argument("--prefix", default=DEFAULT_PREFIX)
-    parser.add_argument("--ioc",    default=DEFAULT_IOC)
+    parser = argparse.ArgumentParser(
+        description="LAMPS Dashboard (Phase 7.1–7.6)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  python3 lamps_dashboard.py --sim          # simulated data, always works\n"
+            "  python3 lamps_dashboard.py                # auto-detect EPICS; fall back to sim\n"
+            "  python3 lamps_dashboard.py --ioc 192.168.1.10  # explicit IOC address\n"
+        )
+    )
+    parser.add_argument("--prefix", default=DEFAULT_PREFIX,
+                        help="EPICS PV prefix (default: LAMPS)")
+    parser.add_argument("--ioc",    default=DEFAULT_IOC,
+                        help="EPICS IOC address (default: localhost)")
+    parser.add_argument("--sim",    action="store_true",
+                        help="Force simulated data mode (skip EPICS)")
     args = parser.parse_args()
 
     app = QApplication(sys.argv)
     app.setApplicationName("LAMPS Dashboard")
     app.setStyle("Fusion")
 
-    proxy  = EpicsProxy(prefix=args.prefix, ioc=args.ioc)
-    window = LampsDashboard(proxy)
+    proxy = EpicsProxy(prefix=args.prefix, ioc=args.ioc)
+
+    # ── Decide whether to use sim backend ─────────────────────────────────────
+    sim = None
+    if args.sim:
+        print("[INFO] --sim flag: using SimulatedBackend", flush=True)
+        sim = SimulatedBackend()
+    elif not EPICS_AVAILABLE:
+        print("[INFO] pyepics unavailable — using SimulatedBackend", flush=True)
+        sim = SimulatedBackend()
+    else:
+        # Auto-detect: probe the IOC for 1 s before falling back to sim
+        print("[INFO] Probing EPICS IOC at", args.ioc, "...", flush=True)
+        if not proxy.probe_connection(timeout=1.0):
+            print(
+                "[INFO] IOC not reachable — falling back to SimulatedBackend.\n"
+                "       Start softIoc + lamps_epics_bridge for live data.",
+                flush=True
+            )
+            sim = SimulatedBackend()
+        else:
+            print("[INFO] EPICS IOC connected.", flush=True)
+
+    window = LampsDashboard(proxy, sim=sim)
     window.show()
     sys.exit(app.exec_())
 

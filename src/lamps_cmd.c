@@ -28,11 +28,15 @@ int lamps_cmd_open_write(void)
 {
     int fd;
 
-    shm_unlink(LAMPS_CMD_SHM_NAME);  /* clean up any stale segment */
-
-    fd = shm_open(LAMPS_CMD_SHM_NAME,
-                  O_CREAT | O_RDWR,
-                  S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    /* Try to open existing first to avoid breaking an already-attached LAMPS */
+    fd = shm_open(LAMPS_CMD_SHM_NAME, O_RDWR, 0);
+    if (fd < 0) {
+        /* Doesn't exist or error, create it */
+        shm_unlink(LAMPS_CMD_SHM_NAME);
+        fd = shm_open(LAMPS_CMD_SHM_NAME,
+                      O_CREAT | O_RDWR,
+                      S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    }
     if (fd < 0) {
         perror("[LAMPS CMD] shm_open(write)");
         return -1;
@@ -92,6 +96,11 @@ int lamps_cmd_open_read(void)
         s_cmd = NULL;
         return -1;
     }
+
+    /* Clear any stale command that might have been left behind by a
+     * crashed bridge session, so we don't auto-execute it on startup. */
+    atomic_store_explicit((_Atomic uint32_t *)&s_cmd->cmd,
+                          LAMPS_CMD_NONE, memory_order_release);
 
     fprintf(stderr, "[LAMPS CMD] command channel attached\n");
     return 0;
@@ -159,6 +168,15 @@ int lamps_cmd_get_run_name(char *buf, size_t len)
     strncpy(buf, s_cmd->run_name, len - 1);
     buf[len - 1] = '\0';
     return 0;
+}
+
+/* =========================================================================
+ * lamps_cmd_is_attached()
+ * Returns 1 if the command SHM is currently mapped, 0 otherwise.
+ * ========================================================================= */
+int lamps_cmd_is_attached(void)
+{
+    return s_cmd != NULL;
 }
 
 /* =========================================================================

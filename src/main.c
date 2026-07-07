@@ -8,6 +8,12 @@
 #include "daq_engine.h"                                                                             //Phase 2: DAQ callbacks
 #include "lamps_cmd.h"                                                                             //Phase 3: remote commands
 
+/* Phase 4: SHM writer — declared here so main() can call open/close.
+ * The full writer-side implementation lives in daq_engine.c (which
+ * defines LAMPS_SHM_WRITER_SIDE before including lamps_shm.h).        */
+extern int  lamps_shm_open_write(void);
+extern void lamps_shm_close(void);
+
 /*Function templates*/
 void Attention(gint XPos,gchar *Messg);
 void GetMainMenu(GtkWidget *Win,GtkWidget **MenuBar); 
@@ -142,14 +148,21 @@ else                                     CommonZoom=FALSE;
  * Thread safety: runs on the GTK main thread (inside gdk_threads_enter),
  * so it is safe to set AcqSignal and call StopNicely/ZeroOned directly.
  *
- * START is logged but not acted on in Phase 3 — starting a new run
- * requires a valid run name; use the LAMPS GUI to pre-configure it, then
- * remote STOP/RESET via EPICS.  Full remote START comes in Phase 4.
+ * Startup order independence: if the bridge was not yet running when LAMPS
+ * started, s_cmd will be NULL. We retry lamps_cmd_open_read() on every tick
+ * until it succeeds — so LAMPS and the bridge can start in any order.
  */
 static gboolean epics_cmd_poll_cb(gpointer unused)
 {
     uint32_t cmd;
     (void)unused;
+
+    /* Lazy-attach: retry every 500 ms until the bridge creates the cmd SHM */
+    if (!lamps_cmd_is_attached()) {
+        if (lamps_cmd_open_read() == 0)
+            fprintf(stderr, "[LAMPS] CMD channel attached (bridge came up)\n");
+        return TRUE;   /* nothing to poll yet — wait for next tick */
+    }
 
     cmd = lamps_cmd_poll();
     if (cmd == LAMPS_CMD_NONE) return TRUE;  /* nothing pending — keep timer */
@@ -221,6 +234,14 @@ if (argc>1)
 g_thread_init(NULL); gdk_threads_init(); gdk_threads_enter();
 
 gtk_init(&argc,&argv); ProgramState=Free;
+/* Phase 4: Create the shared-memory segment immediately at startup.
+ * This replaces any stale /lamps_daq_shm left by a previous sim_shm or
+ * bridge session, so the bridge immediately sees a fresh STOPPED state
+ * rather than looping on stale RUNNING data from the old segment.      */
+if (lamps_shm_open_write() < 0)
+    fprintf(stderr, "[LAMPS] WARNING: could not create SHM segment\n");
+else
+    fprintf(stderr, "[LAMPS] SHM segment created (STATUS=STOPPED, waiting for acquisition)\n");
 /* Phase 2: Register DAQ engine callbacks with the GTK handler functions */
 daq_set_error_cb(GtkDaqErrorHandler);
 daq_set_status_cb(GtkDaqStatusHandler);
@@ -375,6 +396,8 @@ lamps_cmd_open_read();   /* non-fatal if bridge not yet started        */
 g_timeout_add(500, epics_cmd_poll_cb, NULL);
 
 gtk_main(); gdk_threads_leave();
+/* Phase 4: clean up SHM on normal exit so the bridge sees OFFLINE      */
+lamps_shm_close();
 g_list_free(GList);
 return 0;
 }
