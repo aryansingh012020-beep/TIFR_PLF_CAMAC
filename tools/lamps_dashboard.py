@@ -26,6 +26,7 @@ Usage:
 
 import sys
 import argparse
+import os
 import time
 import numpy as np
 
@@ -49,6 +50,7 @@ import analysis.calibration as cal_module
 import analysis.isotopeid as iso_module
 import analysis.efficiency as eff_module
 import analysis.export as exp_module
+import config_editor
 
 # Load isotope library from JSON if present, else fallback
 ISOTOPE_LIBRARY = iso_module.load_library()
@@ -625,6 +627,7 @@ class SpectrumPanel(QGroupBox):
         self._peak_lines = []   # Phase 7.4: vertical marker InfiniteLines
         self._fit_curves = []   # Phase 7.5: Gaussian fit PlotDataItems
         self._cal_poly   = None # Phase 7.6: np.poly1d object when calibrated
+        self._offline_mode = False
         self._build()
 
     # ── Build ───────────────────────────────────────────────────────────────
@@ -705,6 +708,28 @@ class SpectrumPanel(QGroupBox):
         )
         self.btn_export_csv.clicked.connect(self._export_csv)
         row1.addWidget(self.btn_export_csv)
+
+        # ── Offline CSV Viewer ──
+        self.btn_load_csv = QPushButton("📂 Load CSV")
+        self.btn_load_csv.setFixedWidth(80)
+        self.btn_load_csv.setStyleSheet(
+            "QPushButton{color:#aaffaa;background:#0d261a;border:1px solid #339966;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
+            "QPushButton:hover{background:#133926;border-color:#aaffaa;}"
+        )
+        self.btn_load_csv.clicked.connect(self._load_csv)
+        row1.addWidget(self.btn_load_csv)
+
+        self.btn_resume_live = QPushButton("▶ Resume Live")
+        self.btn_resume_live.setFixedWidth(90)
+        self.btn_resume_live.setStyleSheet(
+            "QPushButton{color:#ffaaaa;background:#260d0d;border:1px solid #993333;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;font-weight:bold;}"
+            "QPushButton:hover{background:#391313;border-color:#ffaaaa;}"
+        )
+        self.btn_resume_live.clicked.connect(self._resume_live)
+        self.btn_resume_live.setVisible(False)
+        row1.addWidget(self.btn_resume_live)
 
         row1.addStretch()
 
@@ -932,6 +957,11 @@ class SpectrumPanel(QGroupBox):
     # ── Public API used by the main window ──────────────────────────────────
     def update_spectrum(self, data: np.ndarray):
         """Set new spectrum data and refresh plot + ROI + peak markers."""
+        if self._offline_mode:
+            return
+        self._set_spectrum_data(data)
+
+    def _set_spectrum_data(self, data: np.ndarray):
         # Guard: ignore empty arrays (PV not yet connected)
         if data is None or (hasattr(data, '__len__') and len(data) == 0):
             return
@@ -1285,6 +1315,57 @@ class SpectrumPanel(QGroupBox):
         """Open the calibration dialog (Phase 7.6)."""
         dlg = CalibrationDialog(parent=self, spectrum_panel=self)
         dlg.exec_()
+            
+    def _export_csv(self):
+        if not self._data.any():
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Export ROOT-CSV", "spectrum.csv", "CSV files (*.csv);;All files (*)")
+        if path:
+            exp_module.export_root_csv(path, self._data, cal_poly=self._cal_poly)
+            QMessageBox.information(self, "Export Successful", f"ROOT-CSV file saved to:\n{path}")
+
+    def _load_csv(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Load ROOT-CSV", "", "CSV files (*.csv);;All files (*)")
+        if not path:
+            return
+        try:
+            # Try loading with header first (export_root_csv format: channel,counts,energy_keV)
+            try:
+                data = np.loadtxt(path, delimiter=',', skiprows=1)
+            except (ValueError, StopIteration):
+                # Fallback if no header or empty file
+                data = np.loadtxt(path, delimiter=',')
+
+            # Handle 1D array (single column — treat as raw counts)
+            if data.ndim == 1:
+                counts = data
+            elif data.ndim == 2 and data.shape[1] >= 2:
+                counts = data[:, 1]   # column 1 = counts
+            elif data.ndim == 2 and data.shape[1] == 1:
+                counts = data[:, 0]   # single column
+            else:
+                QMessageBox.warning(self, "Error", "CSV must have at least 1 column of count data.")
+                return
+
+            # Pad to MAX_CHANNELS if smaller, truncate if larger
+            spec = np.zeros(MAX_CHANNELS, dtype=np.float32)
+            length = min(len(counts), MAX_CHANNELS)
+            spec[:length] = counts[:length]
+
+            self._offline_mode = True
+            self.btn_resume_live.setVisible(True)
+            self.btn_load_csv.setVisible(False)
+            self._clear_peak_markers()   # clear analysis overlays from previous data
+            self._set_spectrum_data(spec)
+        except Exception as e:
+            QMessageBox.critical(self, "Load Failed", f"Could not parse CSV:\n{e}")
+
+    def _resume_live(self):
+        self._offline_mode = False
+        self.btn_resume_live.setVisible(False)
+        self.btn_load_csv.setVisible(True)
+        self._clear_peak_markers()   # clear offline analysis overlays
+        self._set_spectrum_data(np.zeros(MAX_CHANNELS, dtype=np.float32))
 
     def apply_calibration(self, poly: np.poly1d, degree: int):
         """Switch x-axis to keV using the given polynomial."""
@@ -1329,17 +1410,9 @@ class SpectrumPanel(QGroupBox):
             return
         path, _ = QFileDialog.getSaveFileName(self, "Export SPE", "spectrum.spe", "SPE files (*.spe);;All files (*)")
         if path:
-            exp_module.export_spe(path, self._data, live_time=1.0, real_time=1.0, cal_poly=self._cal_poly)
-            QMessageBox.information(self, "Export Successful", f"SPE file saved to:\\n{path}")
+            exp_module.export_spe(path, self._data, live_time_s=1.0, real_time_s=1.0)
+            QMessageBox.information(self, "Export Successful", f"SPE file saved to:\n{path}")
             
-    def _export_csv(self):
-        if not self._data.any():
-            return
-        path, _ = QFileDialog.getSaveFileName(self, "Export ROOT-CSV", "spectrum.csv", "CSV files (*.csv);;All files (*)")
-        if path:
-            exp_module.export_root_csv(path, self._data, cal_poly=self._cal_poly)
-            QMessageBox.information(self, "Export Successful", f"ROOT-CSV file saved to:\\n{path}")
-
 # ---------------------------------------------------------------------------
 # Phase 7.6: Calibration Dialog
 # ---------------------------------------------------------------------------
@@ -2034,6 +2107,11 @@ class LampsDashboard(QMainWindow):
 
         self.waterfall_panel = WaterfallPanel()
         self._tabs.addTab(self.waterfall_panel, "Waterfall")
+
+        _script_dir = os.path.dirname(os.path.abspath(__file__))
+        _setup_path = os.path.join(os.path.dirname(_script_dir), ".lamps_set")
+        self.setup_panel = config_editor.SetupPanel(_setup_path)
+        self._tabs.addTab(self.setup_panel, "⚙ Hardware Setup")
 
         body.addWidget(self._tabs, stretch=1)
         root.addLayout(body)
