@@ -492,10 +492,12 @@ class ControlPanel(QGroupBox):
         self.btn_start = self._btn("START",  "#00aa44", "#003318")
         self.btn_stop  = self._btn("STOP",   "#cc3300", "#330d00")
         self.btn_reset = self._btn("RESET",  "#aa6600", "#2a1800")
+        self.btn_load_driver = self._btn("LOAD DRIVER", "#00d8ff", "#002b33")
         self.btn_start.clicked.connect(self._do_start)
         self.btn_stop.clicked.connect(self._do_stop)
         self.btn_reset.clicked.connect(self._do_reset)
-        for b in [self.btn_start, self.btn_stop, self.btn_reset]:
+        self.btn_load_driver.clicked.connect(self._do_load_driver)
+        for b in [self.btn_start, self.btn_stop, self.btn_reset, self.btn_load_driver]:
             btn_row.addWidget(b)
         layout.addLayout(btn_row)
 
@@ -588,6 +590,39 @@ class ControlPanel(QGroupBox):
             self._workers.append(w)
             w.start()
             self.command_issued.emit("RESET")
+
+    def _do_load_driver(self):
+        if self._debounce_timer.isActive():
+            return
+        self._debounce_timer.start()
+        
+        if sys.platform == "win32":
+            QMessageBox.information(self, "Load Driver", "LAMPS now uses WinUSB via libusb on Windows.\nThere is no kernel driver to load natively.")
+            self._fb("Windows driverless mode active", "#00d8ff")
+            return
+            
+        self._fb("Loading driver... please wait", "#aaa")
+        
+        def _run_loader():
+            import subprocess
+            try:
+                # Use pkexec to prompt for password via GUI and run the legacy driver script
+                process = subprocess.Popen(["pkexec", "./ldcmc100"], 
+                                           stdout=subprocess.PIPE, 
+                                           stderr=subprocess.PIPE,
+                                           text=True)
+                stdout, stderr = process.communicate(timeout=20)
+                if process.returncode == 0:
+                    QTimer.singleShot(0, lambda: self._fb("Driver loaded successfully", "#1aff6e"))
+                else:
+                    err = stderr.strip() or stdout.strip() or "Unknown error"
+                    QTimer.singleShot(0, lambda: self._fb(f"Driver load failed: {err}", "#ff4444"))
+            except Exception as e:
+                QTimer.singleShot(0, lambda: self._fb(f"Error: {e}", "#ff4444"))
+
+        import threading
+        t = threading.Thread(target=_run_loader, daemon=True)
+        t.start()
 
     def _on_put_done(self, label: str, ok: bool):
         # Clean up finished worker references
