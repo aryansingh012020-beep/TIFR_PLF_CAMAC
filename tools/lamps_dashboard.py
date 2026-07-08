@@ -1558,6 +1558,26 @@ class CalibrationDialog(QDialog):
         btn_row.addWidget(self.btn_remove)
         btn_row.addStretch()
         cg.addLayout(btn_row)
+        
+        # ── Standard Sources Dropdown
+        src_row = QHBoxLayout()
+        src_row.addWidget(QLabel("Standard Source:"))
+        self.cmb_source = QComboBox()
+        sources = ["Custom"] + sorted(iso_module.BUILTIN_LIBRARY.keys())
+        self.cmb_source.addItems(sources)
+        self.cmb_source.setStyleSheet("background:#1e1e1e; color:#ccc; border:1px solid #333; border-radius:3px;")
+        src_row.addWidget(self.cmb_source)
+
+        self.btn_load_src = self._small_btn("⬇ Load Energies", "#00d8ff", "#002b33")
+        self.btn_load_src.clicked.connect(self._load_standard_source)
+        src_row.addWidget(self.btn_load_src)
+
+        self.btn_auto_match = self._small_btn("⚡ Auto-Match Peaks", "#ffaa22", "#332200")
+        self.btn_auto_match.clicked.connect(self._auto_match_peaks)
+        src_row.addWidget(self.btn_auto_match)
+        src_row.addStretch()
+        cg.addLayout(src_row)
+        
         root.addWidget(cal_grp)
 
         # ── Fit options
@@ -1683,6 +1703,58 @@ class CalibrationDialog(QDialog):
         """If spectrum panel already has a calibration, pre-fill points."""
         # No persistent state yet — dialog starts empty each time
         pass
+
+    def _load_standard_source(self):
+        src = self.cmb_source.currentText()
+        if src == "Custom": return
+        lines = iso_module.BUILTIN_LIBRARY.get(src, [])
+        # Filter weak lines (< 5% intensity) if there are many lines
+        if len(lines) > 5:
+            lines = [L for L in lines if L[1] >= 4.0]
+        lines.sort(key=lambda x: x[0])
+        for eng, inten in lines:
+            self._add_row("", f"{eng:.3f}")
+
+    def _auto_match_peaks(self):
+        """Match the highest detected peaks from SpectrumPanel to the loaded empty energies."""
+        empty_rows = []
+        for r in range(self.cal_table.rowCount()):
+            ch_item = self.cal_table.item(r, 0)
+            en_item = self.cal_table.item(r, 1)
+            if not ch_item.text().strip() and en_item.text().strip():
+                try:
+                    empty_rows.append((r, float(en_item.text())))
+                except ValueError:
+                    pass
+        if not empty_rows:
+            QMessageBox.information(self, "No Empty Energies", "Load a Standard Source first, or ensure there are empty 'Centroid' cells.")
+            return
+
+        peaks = []
+        pt = self._sp.peak_table
+        for r in range(pt.rowCount()):
+            try:
+                ch_str = pt.item(r, 0).text().split()[0]
+                counts_str = pt.item(r, 1).text().replace(',', '')
+                peaks.append((float(ch_str), float(counts_str)))
+            except (ValueError, AttributeError):
+                pass
+
+        if not peaks:
+            QMessageBox.information(self, "No Peaks", "Run a Peak Search in the main dashboard first!")
+            return
+
+        if len(peaks) < len(empty_rows):
+            QMessageBox.warning(self, "Not Enough Peaks", f"Found {len(peaks)} peaks, but need {len(empty_rows)} to match.")
+
+        peaks.sort(key=lambda x: x[1], reverse=True)
+        top_peaks = peaks[:len(empty_rows)]
+        top_peaks.sort(key=lambda x: x[0])
+        
+        empty_rows.sort(key=lambda x: x[1])
+        for (row_idx, _), (centroid, _) in zip(empty_rows, top_peaks):
+            item = self.cal_table.item(row_idx, 0)
+            item.setText(f"{centroid:.3f}")
 
     # ── Calibration fit ───────────────────────────────────────────────────────────────
     def _collect_points(self):
