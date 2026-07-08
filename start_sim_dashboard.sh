@@ -16,7 +16,8 @@
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-DASHBOARD="$SCRIPT_DIR/tools/lamps_dashboard.py"
+TOOLSNEW_DIR="$SCRIPT_DIR/toolsnew"
+DASHBOARD="$TOOLSNEW_DIR/lamps_dashboard.py"
 
 echo "======================================"
 echo " LAMPS Dashboard — Simulated Data Mode"
@@ -34,4 +35,5 @@ echo ""
 # Suppress the XDG_SESSION_TYPE warning on Wayland/GNOME systems
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
 
+cd "$TOOLSNEW_DIR"
 python3 "$DASHBOARD" --sim "$@"
