@@ -229,6 +229,162 @@ class SimulatedBackend:
 
 
 # ---------------------------------------------------------------------------
+# ZLS Replay Backend
+# ---------------------------------------------------------------------------
+class ZlsReplayBackend(QThread):
+    def __init__(self, filepath, n_par=16, speed_mult=1.0):
+        super().__init__()
+        self.filepath = filepath
+        self.n_par = n_par
+        self.hdr_wds = (n_par + 15) // 16
+        self.speed_mult = speed_mult
+        
+        import threading
+        self._lock = threading.Lock()
+        self.N_CHAN = 8192
+        self._spectrum = np.zeros(self.N_CHAN, dtype=np.uint32)
+        
+        self._hist2d = None
+        self._twod_conf = None
+        self._pseudo_conf = []
+        
+        self._events = 0
+        self._tick = 0
+        self._state = "STOPPED"
+        self._run_name = os.path.basename(filepath)
+        self._param_idx = 0 # which param to plot in 1D
+
+    def set_config(self, twod_conf=None, pseudo_conf=None, param_idx=0):
+        with self._lock:
+            self._param_idx = param_idx
+            if pseudo_conf is not None:
+                self._pseudo_conf = pseudo_conf
+            if twod_conf is not None:
+                self._twod_conf = twod_conf
+                self._hist2d = np.zeros((twod_conf['xsz'], twod_conf['ysz']), dtype=np.uint32)
+
+    def get_metrics(self):
+        with self._lock:
+            return {
+                'status': "REPLAY" if self._state == "RUNNING" else self._state,
+                'run_name': self._run_name,
+                'elapsed': self._tick * 0.1,
+                'total_ev': self._events,
+                'ev_rate': 0,
+                'bufs_acq': self._tick,
+                'bufs_proc': self._tick,
+                'cmd_rn': self._run_name,
+            }
+
+    def get_spectrum(self, det=1):
+        with self._lock:
+            return self._spectrum.copy().astype(np.float32)
+            
+    def get_twod(self):
+        with self._lock:
+            if self._hist2d is not None:
+                return self._hist2d.copy()
+            return None
+
+    def start_replay(self, run_name=None):
+        if run_name: self._run_name = run_name
+        self._state = "RUNNING"
+        self.start()
+
+    def stop(self):
+        self._state = "STOPPED"
+
+    def reset(self):
+        with self._lock:
+            self._spectrum[:] = 0
+            if self._hist2d is not None:
+                self._hist2d[:] = 0
+            self._events = 0
+            self._tick = 0
+
+    @property
+    def is_running(self):
+        return self._state == "RUNNING"
+
+    def run(self):
+        try:
+            with open(self.filepath, 'rb') as f:
+                while self._state == "RUNNING":
+                    sign = f.read(4)
+                    if not sign: break
+                    if sign not in (b'DAPS', b'GSUP'):
+                        print("[Replay] Invalid ZLS signature:", sign)
+                        break
+                        
+                    cbuf_siz = np.frombuffer(f.read(4), dtype=np.uint32)[0]
+                    buf = np.frombuffer(f.read(cbuf_siz), dtype=np.uint16)
+                    
+                    wrd_ptr = 0
+                    wds_in_buf = cbuf_siz // 2
+                    
+                    batch_spec = np.zeros(self.N_CHAN, dtype=np.uint32)
+                    events_batch = 0
+                    
+                    while wrd_ptr < wds_in_buf:
+                        if wds_in_buf - wrd_ptr < self.hdr_wds: break
+                        
+                        evt_hdr = buf[wrd_ptr : wrd_ptr + self.hdr_wds]
+                        wrd_ptr += self.hdr_wds
+                        
+                        para = np.zeros(self.n_par + len(self._pseudo_conf), dtype=np.uint32)
+                        
+                        for j in range(self.hdr_wds):
+                            mask = evt_hdr[j]
+                            for i in range(16):
+                                idx = i + 16*j
+                                if idx >= self.n_par: break
+                                if (mask >> i) & 1:
+                                    if wrd_ptr < wds_in_buf:
+                                        para[idx] = buf[wrd_ptr]
+                                        wrd_ptr += 1
+                        
+                        # Pseudo
+                        p_idx = self.n_par
+                        for p in self._pseudo_conf:
+                            v1 = para[p['p1']-1] if p['p1'] > 0 else 0
+                            v2 = para[p['p2']-1] if p['p2'] > 0 else 0
+                            val = 0
+                            if p['mode'] == 0: val = v1 + v2
+                            elif p['mode'] == 1: val = v1 * v2
+                            elif p['mode'] == 2: val = int((v1 / v2) * p['const']) if v2 > 0 else 0
+                            para[p_idx] = val
+                            p_idx += 1
+                        
+                        # 1D Spectrum
+                        if self._param_idx < len(para):
+                            val1d = para[self._param_idx]
+                            if 0 < val1d < self.N_CHAN:
+                                batch_spec[val1d] += 1
+                                
+                        # 2D Spectrum
+                        if self._twod_conf is not None:
+                            x_idx = self._twod_conf['xpr'] - 1
+                            y_idx = self._twod_conf['ypr'] - 1
+                            if x_idx < len(para) and y_idx < len(para):
+                                vx = para[x_idx]
+                                vy = para[y_idx]
+                                if 0 < vx < self._twod_conf['xsz'] and 0 < vy < self._twod_conf['ysz']:
+                                    self._hist2d[vx, vy] += 1
+                                    
+                        events_batch += 1
+                        
+                    with self._lock:
+                        self._spectrum += batch_spec
+                        self._events += events_batch
+                        self._tick += 1
+                    
+                    time.sleep(0.01 / self.speed_mult) # yield
+                    
+        except Exception as e:
+            print(f"[Replay] Error: {e}")
+        self._state = "STOPPED"
+
+# ---------------------------------------------------------------------------
 # EPICS proxy
 # ---------------------------------------------------------------------------
 class EpicsProxy:
@@ -325,6 +481,7 @@ class EpicsPoller(QThread):
     """
     metrics_ready  = pyqtSignal(dict)       # fired every REFRESH_MS
     spectrum_ready = pyqtSignal(object)     # fired every SPEC_REFRESH_MS
+    twod_ready     = pyqtSignal(object)     # fired for 2D histograms
 
     def __init__(self, proxy: 'EpicsProxy', sim: 'SimulatedBackend | None' = None,
                  parent=None):
@@ -362,6 +519,10 @@ class EpicsPoller(QThread):
                 if self._tick == 0:
                     arr = self._sim.get_spectrum(self._det)
                     self.spectrum_ready.emit(arr)
+                    if hasattr(self._sim, 'get_twod'):
+                        twod = self._sim.get_twod()
+                        if twod is not None:
+                            self.twod_ready.emit(twod)
 
             else:
                 # ── Live EPICS backend ─────────────────────────────────────
@@ -493,11 +654,13 @@ class ControlPanel(QGroupBox):
         self.btn_stop  = self._btn("STOP",   "#cc3300", "#330d00")
         self.btn_reset = self._btn("RESET",  "#aa6600", "#2a1800")
         self.btn_load_driver = self._btn("LAUNCH BACKEND", "#00d8ff", "#002b33")
+        self.btn_replay = self._btn("📂 REPLAY .zls", "#5588cc", "#001122")
         self.btn_start.clicked.connect(self._do_start)
         self.btn_stop.clicked.connect(self._do_stop)
         self.btn_reset.clicked.connect(self._do_reset)
         self.btn_load_driver.clicked.connect(self._do_load_driver)
-        for b in [self.btn_start, self.btn_stop, self.btn_reset, self.btn_load_driver]:
+        self.btn_replay.clicked.connect(self._do_replay)
+        for b in [self.btn_start, self.btn_stop, self.btn_reset, self.btn_load_driver, self.btn_replay]:
             btn_row.addWidget(b)
         layout.addLayout(btn_row)
 
@@ -601,13 +764,20 @@ class ControlPanel(QGroupBox):
             self._fb("Windows driverless mode active", "#00d8ff")
             return
             
-        self._fb("Loading driver... please wait", "#aaa")
+        self._fb("Launching Backend Stack...", "#aaa")
         
         def _run_loader():
             import subprocess
             import time
             try:
-                # 1. Load the driver
+                # 1. Start LAMPS (DAQ server & GUI)
+                QTimer.singleShot(0, lambda: self._fb("Starting LAMPS Backend...", "#aaa"))
+                subprocess.Popen(["./lamps"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                # Wait for LAMPS GTK window to initialize shared memory
+                time.sleep(3)
+
+                # 2. Load the driver
                 QTimer.singleShot(0, lambda: self._fb("Loading driver (pkexec)...", "#aaa"))
                 p_drv = subprocess.Popen(["pkexec", "./ldcmc100"], 
                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -616,17 +786,10 @@ class ControlPanel(QGroupBox):
                     QTimer.singleShot(0, lambda: self._fb(f"Driver load failed: {err.strip()}", "#ff4444"))
                     return
 
-                # 2. Start IOC
+                # 3. Start IOC
                 QTimer.singleShot(0, lambda: self._fb("Starting EPICS IOC...", "#aaa"))
                 subprocess.Popen(["./run_ioc.sh"], cwd="src", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 time.sleep(2)
-                
-                # 3. Start LAMPS (DAQ server)
-                QTimer.singleShot(0, lambda: self._fb("Starting LAMPS Backend...", "#aaa"))
-                subprocess.Popen(["./lamps"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                
-                # Wait for LAMPS GTK window to initialize shared memory
-                time.sleep(4)
                 
                 # 4. Start EPICS Bridge
                 QTimer.singleShot(0, lambda: self._fb("Starting EPICS Bridge...", "#aaa"))
@@ -650,6 +813,11 @@ class ControlPanel(QGroupBox):
             # Re-enable buttons on failure so operator can retry
             self.btn_start.setEnabled(True)
             self.btn_stop.setEnabled(True)
+
+    def _do_replay(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Select ZLS file", "", "List Mode files (*.zls);;All files (*)")
+        if path:
+            self.command_issued.emit(f"REPLAY:{path}")
 
     def _fb(self, msg, color):
         self.lbl_fb.setText(msg)
@@ -1894,6 +2062,74 @@ class CalibrationDialog(QDialog):
 
 
 # ---------------------------------------------------------------------------
+# 2D Scatter / Banana Gates
+# ---------------------------------------------------------------------------
+class Scatter2DPanel(QGroupBox):
+    def __init__(self, parent=None):
+        super().__init__("2D Scatter (E vs dE)")
+        self.setStyleSheet("""
+            QGroupBox { border:1px solid #252525; border-radius:6px; margin-top:8px; font-size:9pt; color:#555; }
+            QGroupBox::title { subcontrol-origin:margin; left:10px; padding:0 4px; }
+            QPushButton { color:#aaa; background:#1a1a1a; border:1px solid #333; border-radius:3px; padding:2px 8px; }
+            QPushButton:hover { background:#333; color:#fff; }
+        """)
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 15, 10, 10)
+        
+        tools = QHBoxLayout()
+        self.btn_gate = QPushButton("🍌 Draw Banana Gate")
+        self.btn_gate.clicked.connect(self._start_draw_gate)
+        tools.addWidget(self.btn_gate)
+        
+        self.btn_clear_gate = QPushButton("🗑 Clear Gates")
+        self.btn_clear_gate.clicked.connect(self._clear_gates)
+        tools.addWidget(self.btn_clear_gate)
+        
+        tools.addStretch()
+        self.lbl_gate_info = QLabel("")
+        self.lbl_gate_info.setStyleSheet("color:#ffcc00;")
+        tools.addWidget(self.lbl_gate_info)
+        layout.addLayout(tools)
+        
+        self.plot_widget = pg.PlotWidget()
+        self.plot_widget.setLabel('bottom', 'X Parameter')
+        self.plot_widget.setLabel('left', 'Y Parameter')
+        
+        self.img = pg.ImageItem()
+        self.plot_widget.addItem(self.img)
+        
+        cmap = pg.colormap.get('magma')
+        self.img.setLookupTable(cmap.getLookupTable())
+        
+        layout.addWidget(self.plot_widget)
+        
+        self._gates = []
+
+    def update_2d(self, hist2d):
+        if hist2d is None: return
+        log_hist = np.log1p(hist2d)
+        self.img.setImage(log_hist, autoLevels=False, levels=(0, log_hist.max()+1))
+
+    def _start_draw_gate(self):
+        roi = pg.PolyLineROI([[100, 100], [200, 100], [200, 200], [100, 200]], closed=True, pen=pg.mkPen('#ffcc00', width=2))
+        self.plot_widget.addItem(roi)
+        self._gates.append(roi)
+        self.btn_gate.setText("🍌 Add Another Gate")
+        roi.sigRegionChanged.connect(self._on_gate_changed)
+        self._on_gate_changed()
+
+    def _clear_gates(self):
+        for roi in self._gates:
+            self.plot_widget.removeItem(roi)
+        self._gates.clear()
+        self.btn_gate.setText("🍌 Draw Banana Gate")
+        self.lbl_gate_info.setText("")
+
+    def _on_gate_changed(self):
+        self.lbl_gate_info.setText(f"{len(self._gates)} gate(s) active.")
+
+# ---------------------------------------------------------------------------
 # Phase 9: Waterfall / 2D time-evolution heatmap
 # ---------------------------------------------------------------------------
 class WaterfallPanel(QGroupBox):
@@ -2228,6 +2464,9 @@ class LampsDashboard(QMainWindow):
         self.spec_panel = SpectrumPanel(self._epics)
         self._tabs.addTab(self.spec_panel, "Spectrum")
 
+        self.scatter2d_panel = Scatter2DPanel()
+        self._tabs.addTab(self.scatter2d_panel, "2D Scatter")
+
         self.waterfall_panel = WaterfallPanel()
         self._tabs.addTab(self.waterfall_panel, "Waterfall")
 
@@ -2284,6 +2523,7 @@ class LampsDashboard(QMainWindow):
         self._poller = EpicsPoller(self._epics, sim=self._sim, parent=self)
         self._poller.metrics_ready.connect(self._refresh_metrics)
         self._poller.spectrum_ready.connect(self._refresh_spectrum)
+        self._poller.twod_ready.connect(self.scatter2d_panel.update_2d)
         self._poller.start()
         # Optimistic UI update: react to button presses immediately
         self.ctrl.command_issued.connect(self._on_command_issued)
@@ -2324,6 +2564,22 @@ class LampsDashboard(QMainWindow):
             self.status_badge.set_status("RUNNING")
             self.ctrl.update_from_status("RUNNING")
             self.m_run_name.set(rn or "—")
+
+        elif cmd.startswith("REPLAY:"):
+            path = cmd.split("REPLAY:")[1]
+            if hasattr(self, '_replay_backend'):
+                self._replay_backend.stop()
+            self._replay_backend = ZlsReplayBackend(path, n_par=16, speed_mult=10.0)
+            
+            twod_conf = self.setup_panel.config.twod_spectra[0] if self.setup_panel.config.twod_spectra else None
+            pseudo_conf = self.setup_panel.config.pseudo_params
+            self._replay_backend.set_config(twod_conf=twod_conf, pseudo_conf=pseudo_conf)
+            
+            self._poller._sim = self._replay_backend
+            self._replay_backend.start_replay()
+            self.status_badge.set_status("REPLAY")
+            self.ctrl.update_from_status("REPLAY")
+            self.ctrl._fb(f"Replaying: {os.path.basename(path)}", "#5588cc")
 
     # ── Refresh slots — called via pyqtSignal from EpicsPoller (GUI-thread safe)
     def _refresh_metrics(self, data: dict):

@@ -40,6 +40,12 @@ class LampsSetupConfig:
         self.num_crates = 1
         self.camac_mode = 0
         
+        # Twod & Pseudo Settings
+        self.num_twod = 0
+        self.twod_spectra = []
+        self.num_pseudo = 0
+        self.pseudo_params = []
+        
         # Station settings (46 stations possible: 2 crates * 23 slots)
         # 1-indexed to match LAMPS convention, store as dict of dicts
         self.stations: Dict[int, Dict[str, Any]] = {}
@@ -118,6 +124,27 @@ class LampsSetupConfig:
                         except Exception:
                             pass
                         break
+            elif label == "No. of 2d Spectra":
+                self.num_twod = int(value_str)
+            elif label.startswith("Spec. No.") and "XPr,Nx,YPr,Ny" in label:
+                vals = value_str.split()
+                if len(vals) >= 7:
+                    self.twod_spectra.append({
+                        "xpr": int(vals[0]), "nx": int(vals[1]),
+                        "ypr": int(vals[2]), "ny": int(vals[3]),
+                        "xsz": int(vals[4]), "ysz": int(vals[5]),
+                        "name": vals[6]
+                    })
+            elif label == "No. of Pseudo Parameters":
+                self.num_pseudo = int(value_str)
+            elif label.startswith("Pseudo No."):
+                vals = value_str.split()
+                if len(vals) >= 6:
+                    self.pseudo_params.append({
+                        "mode": int(vals[0]), "p1": int(vals[1]),
+                        "p2": int(vals[2]), "n1": int(vals[3]),
+                        "n2": int(vals[4]), "const": float(vals[5])
+                    })
                         
         self.parsed = True
         return True
