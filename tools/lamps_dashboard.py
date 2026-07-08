@@ -425,16 +425,35 @@ class MetricRow(QWidget):
 # ---------------------------------------------------------------------------
 # Phase 7.2: Control Panel
 # ---------------------------------------------------------------------------
+class _EpicsPutWorker(QThread):
+    """Fire-and-forget: run caput on a background thread so the GUI never stalls."""
+    done = pyqtSignal(str, bool)   # (label, success)
+
+    def __init__(self, epics_proxy, suffix, value, label):
+        super().__init__()
+        self._proxy = epics_proxy
+        self._suffix = suffix
+        self._value  = value
+        self._label  = label
+
+    def run(self):
+        ok = self._proxy.put(self._suffix, self._value)
+        self.done.emit(self._label, ok)
+
+
 class ControlPanel(QGroupBox):
     """
     Run control panel: START / STOP / RESET buttons.
 
-    Emits ``command_issued(str)`` immediately when a button is clicked so
-    the main window can apply an *optimistic UI update* before the EPICS
-    round-trip confirms the state change.  Payload values: "START", "STOP",
-    "RESET".
+    Fixed issues vs. original:
+      1. caput runs in a background QThread — GUI thread never blocks.
+      2. 500 ms debounce prevents rapid double-fire.
+      3. command_lockout_ms (2500 ms) — after a command the panel ignores
+         poller status overrides while the IOC processes the request.
     """
-    command_issued = pyqtSignal(str)   # "START" | "STOP" | "RESET"
+    command_issued   = pyqtSignal(str)   # "START" | "STOP" | "RESET"
+    DEBOUNCE_MS      = 500
+    LOCKOUT_MS       = 2500   # suppress poller overrides after a command
 
     def __init__(self, epics_proxy: EpicsProxy,
                  sim: 'SimulatedBackend | None' = None):
@@ -442,6 +461,10 @@ class ControlPanel(QGroupBox):
         self._epics = epics_proxy
         self._sim   = sim
         self._prefilled = False
+        self._workers   = []    # keep worker references alive
+        self._debounce_timer = QTimer(self)
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.setInterval(self.DEBOUNCE_MS)
         self._build()
 
     def _build(self):
@@ -464,9 +487,9 @@ class ControlPanel(QGroupBox):
         layout.addLayout(rn_row)
 
         btn_row = QHBoxLayout(); btn_row.setSpacing(8)
-        self.btn_start = self._btn("▶  START",  "#00aa44", "#003318")
-        self.btn_stop  = self._btn("■  STOP",   "#cc3300", "#330d00")
-        self.btn_reset = self._btn("↺  RESET",  "#aa6600", "#2a1800")
+        self.btn_start = self._btn("START",  "#00aa44", "#003318")
+        self.btn_stop  = self._btn("STOP",   "#cc3300", "#330d00")
+        self.btn_reset = self._btn("RESET",  "#aa6600", "#2a1800")
         self.btn_start.clicked.connect(self._do_start)
         self.btn_stop.clicked.connect(self._do_stop)
         self.btn_reset.clicked.connect(self._do_reset)
@@ -503,41 +526,77 @@ class ControlPanel(QGroupBox):
             self.run_name_edit.setText(name.strip())
             self._prefilled = True
 
+    # ── Command handlers ────────────────────────────────────────────────────
     def _do_start(self):
+        if self._debounce_timer.isActive():
+            return
+        self._debounce_timer.start()
         rn = self.run_name_edit.text().strip()
         if not rn:
-            self._fb("⚠  Enter a run name first", "#ffcc00"); return
-        self._fb("Sending START…", "#aaa")
+            self._fb("Enter a run name first", "#ffcc00"); return
+        # Immediately disable both buttons to prevent double-fire
+        self.btn_start.setEnabled(False)
+        self.btn_stop.setEnabled(False)
+        self._fb("Sending START...", "#aaa")
         if self._sim is not None:
             self._sim.start(rn)
-            self._fb(f"✓ [SIM] STARTED  ({rn})", "#1aff6e")
+            self._fb(f"[SIM] STARTED  ({rn})", "#1aff6e")
+            self.command_issued.emit("START")
         else:
-            ok = self._epics.put("CMD:RUN_NAME", rn) and self._epics.put("CMD:START", 1)
-            self._fb(f"✓ START  ({rn})" if ok else "✗ caput failed", "#1aff6e" if ok else "#ff4444")
-        # Optimistic: notify main window immediately regardless of EPICS round-trip
-        self.command_issued.emit("START")
+            # Non-blocking: send RUN_NAME first, then START on worker thread
+            self._epics.put("CMD:RUN_NAME", rn)   # usually fast string put
+            w = _EpicsPutWorker(self._epics, "CMD:START", 1, f"START ({rn})")
+            w.done.connect(self._on_put_done)
+            self._workers.append(w)
+            w.start()
+            self.command_issued.emit("START")
 
     def _do_stop(self):
-        self._fb("Sending STOP…", "#aaa")
+        if self._debounce_timer.isActive():
+            return
+        self._debounce_timer.start()
+        self.btn_start.setEnabled(False)
+        self.btn_stop.setEnabled(False)
+        self._fb("Sending STOP...", "#aaa")
         if self._sim is not None:
             self._sim.stop()
-            self._fb("✓ [SIM] STOPPED", "#ffcc00")
+            self._fb("[SIM] STOPPED", "#ffcc00")
+            self.command_issued.emit("STOP")
         else:
-            ok = self._epics.put("CMD:STOP", 1)
-            self._fb("✓ STOP sent" if ok else "✗ caput failed", "#ffcc00" if ok else "#ff4444")
-        # Optimistic: notify main window immediately
-        self.command_issued.emit("STOP")
+            w = _EpicsPutWorker(self._epics, "CMD:STOP", 1, "STOP")
+            w.done.connect(self._on_put_done)
+            self._workers.append(w)
+            w.start()
+            self.command_issued.emit("STOP")
 
     def _do_reset(self):
-        self._fb("Sending RESET…", "#aaa")
+        if self._debounce_timer.isActive():
+            return
+        self._debounce_timer.start()
+        self.btn_start.setEnabled(False)
+        self.btn_stop.setEnabled(False)
+        self._fb("Sending RESET...", "#aaa")
         if self._sim is not None:
             self._sim.reset()
-            self._fb("✓ [SIM] RESET", "#ff8800")
+            self._fb("[SIM] RESET", "#ff8800")
+            self.command_issued.emit("RESET")
         else:
-            ok = self._epics.put("CMD:RESET", 1)
-            self._fb("✓ RESET sent" if ok else "✗ caput failed", "#ff8800" if ok else "#ff4444")
-        # Optimistic: notify main window immediately
-        self.command_issued.emit("RESET")
+            w = _EpicsPutWorker(self._epics, "CMD:RESET", 1, "RESET")
+            w.done.connect(self._on_put_done)
+            self._workers.append(w)
+            w.start()
+            self.command_issued.emit("RESET")
+
+    def _on_put_done(self, label: str, ok: bool):
+        # Clean up finished worker references
+        self._workers = [w for w in self._workers if w.isRunning()]
+        if ok:
+            self._fb(f"Sent: {label}", "#1aff6e")
+        else:
+            self._fb(f"FAILED: {label}", "#ff4444")
+            # Re-enable buttons on failure so operator can retry
+            self.btn_start.setEnabled(True)
+            self.btn_stop.setEnabled(True)
 
     def _fb(self, msg, color):
         self.lbl_fb.setText(msg)
@@ -1892,7 +1951,8 @@ class LampsDashboard(QMainWindow):
         super().__init__()
         self._epics = proxy
         self._sim   = sim
-        self._rn_prefilled = False
+        self._rn_prefilled    = False
+        self._cmd_lockout_until = 0.0   # epoch seconds: ignore poller status until this time
         mode_str = "[SIM MODE]" if sim is not None else f"{proxy.prefix} @ {proxy.ioc}"
         self.setWindowTitle(f"LAMPS Dashboard  —  {mode_str}")
         self.setMinimumSize(1100, 660)
@@ -2037,23 +2097,20 @@ class LampsDashboard(QMainWindow):
     def _on_command_issued(self, cmd: str):
         """
         Called the instant the user presses START / STOP / RESET.
-        Does *not* wait for the EPICS CA round-trip or SHM update.
-        Gives the operator immediate visual feedback.
-
-        For live EPICS mode, the poller will later confirm (or correct) the
-        state once the bridge publishes updated PVs.
+        Sets a 2.5 s lockout so the poller cannot revert the badge
+        while the IOC is still processing the command.
         """
+        LOCKOUT_S = ControlPanel.LOCKOUT_MS / 1000.0
+        self._cmd_lockout_until = time.monotonic() + LOCKOUT_S
+
         if cmd == "STOP":
-            # Badge → STOPPED, disable STOP, enable START
             self.status_badge.set_status("STOPPED")
             self.ctrl.update_from_status("STOPPED")
-            self.m_event_rate.set("—  (stopped)")
+            self.m_event_rate.set("(stopped)")
 
         elif cmd == "RESET":
-            # Badge → STOPPED, disable STOP, enable START
             self.status_badge.set_status("STOPPED")
             self.ctrl.update_from_status("STOPPED")
-            # Clear spectrum immediately so operator sees empty plot
             self.spec_panel.update_spectrum(np.zeros(MAX_CHANNELS, dtype=np.float32))
             self.m_total_ev.set("—")
             self.m_event_rate.set("—")
@@ -2063,7 +2120,6 @@ class LampsDashboard(QMainWindow):
 
         elif cmd == "START":
             rn = self.ctrl.run_name_edit.text().strip()
-            # Badge → RUNNING, disable START, enable STOP
             self.status_badge.set_status("RUNNING")
             self.ctrl.update_from_status("RUNNING")
             self.m_run_name.set(rn or "—")
@@ -2078,8 +2134,13 @@ class LampsDashboard(QMainWindow):
         bufs_acq  = data.get('bufs_acq')
         bufs_proc = data.get('bufs_proc')
 
-        self.status_badge.set_status(status)
-        self.ctrl.update_from_status(status)
+        # ---- Lockout: skip badge/button updates for LOCKOUT_MS after any command ----
+        # This prevents the poller reading a stale EPICS status and reverting
+        # the optimistic UI update before the IOC has acknowledged the command.
+        locked = time.monotonic() < self._cmd_lockout_until
+        if not locked:
+            self.status_badge.set_status(status)
+            self.ctrl.update_from_status(status)
 
         if not self._rn_prefilled:
             rn = data.get('cmd_rn', '')
