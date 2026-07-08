@@ -52,7 +52,10 @@ class LampsSetupConfig:
         for i in range(1, 47):
             self.stations[i] = {
                 "module": 0, "lam": 0, "mode": 5, "lld": 50, "f": 0, "gain": 8192,
-                "params": "<>", "paranames": "<>", "zsup_lld": 1, "zsup_uld": 8190
+                "params": "<>", "paranames": "<>", "zsup_lld": 1, "zsup_uld": 8190,
+                "silena_offsets": "127 127 127 127 127 127 127 127",
+                "lower_thresholds": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1",
+                "upper_thresholds": "4094 4094 4094 4094 4094 4094 4094 4094 4094 4094 4094 4094 4094 4094 4094 4094"
             }
             
     def load(self):
@@ -65,87 +68,87 @@ class LampsSetupConfig:
             self.raw_lines = f.readlines()
             
         # Parse the raw lines to extract key values
-        for i, line in enumerate(self.raw_lines):
+        current_stn = -1
+        i = 0
+        while i < len(self.raw_lines):
+            line = self.raw_lines[i]
             line_str = line.strip('\n')
-            if len(line_str) <= 41 or line_str[40] != '=':
-                continue
-                
-            label = line_str[:40].strip()
-            value_str = line_str[41:].strip()
             
-            if label == "ListOn":
-                self.list_on = int(value_str)
-            elif label == "Compression":
-                self.compression = int(value_str)
-            elif label == "Event Rate (0-4)":
-                self.rate = int(value_str)
-            elif label == "Number of Crates":
-                self.num_crates = int(value_str)
-            elif label == "Camac Mode":
-                self.camac_mode = int(value_str)
-            elif label.startswith("Stn.No.") and "Module,Lam,Mode" in label:
-                # e.g. "Stn.No. 10  Module,Lam,Mode,LLD,F,Gain "
-                try:
-                    parts = label.replace("Stn.No.", "").split()
-                    stn_idx = int(parts[0])
+            if len(line_str) > 40 and line_str[40] == '=':
+                label = line_str[:40].strip()
+                value_str = line_str[41:].strip()
+                
+                if label == "ListOn":
+                    self.list_on = int(value_str)
+                elif label == "Compression":
+                    self.compression = int(value_str)
+                elif label == "Event Rate (0-4)":
+                    self.rate = int(value_str)
+                elif label == "Number of Crates":
+                    self.num_crates = int(value_str)
+                elif label == "Camac Mode":
+                    self.camac_mode = int(value_str)
+                elif label.startswith("Stn.No.") and "Module,Lam,Mode" in label:
+                    # e.g. "Stn.No. 10  Module,Lam,Mode,LLD,F,Gain "
+                    try:
+                        parts = label.replace("Stn.No.", "").split()
+                        stn_idx = int(parts[0])
+                        current_stn = stn_idx
+                        vals = value_str.split()
+                        if len(vals) >= 6:
+                            self.stations[stn_idx]["module"] = int(vals[0])
+                            self.stations[stn_idx]["lam"] = int(vals[1])
+                            self.stations[stn_idx]["mode"] = int(vals[2])
+                            self.stations[stn_idx]["lld"] = int(vals[3])
+                            self.stations[stn_idx]["f"] = int(vals[4])
+                            self.stations[stn_idx]["gain"] = int(vals[5])
+                    except Exception as e:
+                        print(f"Error parsing station at line {i}: {e}")
+                elif label == "Silena Offsets" and current_stn != -1:
+                    self.stations[current_stn]["silena_offsets"] = value_str
+                elif label == "Lower Thresholds" and current_stn != -1:
+                    self.stations[current_stn]["lower_thresholds"] = value_str
+                elif label == "Upper Thresholds" and current_stn != -1:
+                    self.stations[current_stn]["upper_thresholds"] = value_str
+                elif label == "Parameters, SubAddresses" and current_stn != -1:
+                    self.stations[current_stn]["params"] = value_str
+                elif label == "ParaNames, ZSupLLD, ZSupULD" and current_stn != -1:
+                    idx = value_str.rfind('>')
+                    if idx != -1:
+                        self.stations[current_stn]["paranames"] = value_str[:idx+1].strip()
+                        zvals = value_str[idx+1:].split()
+                        if len(zvals) >= 2:
+                            self.stations[current_stn]["zsup_lld"] = int(zvals[0])
+                            self.stations[current_stn]["zsup_uld"] = int(zvals[1])
+                    current_stn = -1 # End of block
+                elif label == "No. of 2d Spectra":
+                    self.num_twod = int(value_str)
+                elif label.startswith("Spec. No.") and "XPr,Nx,YPr,Ny" in label:
+                    vals = value_str.split()
+                    if len(vals) >= 7:
+                        self.twod_spectra.append({
+                            "xpr": int(vals[0]), "nx": int(vals[1]),
+                            "ypr": int(vals[2]), "ny": int(vals[3]),
+                            "xsz": int(vals[4]), "ysz": int(vals[5]),
+                            "name": vals[6]
+                        })
+                elif label == "No. of Pseudo Parameters":
+                    self.num_pseudo = int(value_str)
+                elif label.startswith("Pseudo No."):
                     vals = value_str.split()
                     if len(vals) >= 6:
-                        self.stations[stn_idx]["module"] = int(vals[0])
-                        self.stations[stn_idx]["lam"] = int(vals[1])
-                        self.stations[stn_idx]["mode"] = int(vals[2])
-                        self.stations[stn_idx]["lld"] = int(vals[3])
-                        self.stations[stn_idx]["f"] = int(vals[4])
-                        self.stations[stn_idx]["gain"] = int(vals[5])
-                except Exception as e:
-                    print(f"Error parsing station at line {i}: {e}")
-            elif label == "Parameters, SubAddresses":
-                # Look backwards for the station number... slightly hacky but works for this strict file
-                for k in range(i-1, max(0, i-5), -1):
-                    if "Stn.No." in self.raw_lines[k]:
-                        try:
-                            stn_idx = int(self.raw_lines[k].strip('\n')[:40].replace("Stn.No.", "").split()[0])
-                            self.stations[stn_idx]["params"] = value_str
-                        except Exception:
-                            pass
-                        break
-            elif label == "ParaNames, ZSupLLD, ZSupULD":
-                for k in range(i-2, max(0, i-5), -1):
-                    if "Stn.No." in self.raw_lines[k]:
-                        try:
-                            stn_idx = int(self.raw_lines[k].strip('\n')[:40].replace("Stn.No.", "").split()[0])
-                            # e.g. value_str = "<Para01-04> 1 8190"
-                            if ">" in value_str:
-                                p_end = value_str.rfind(">") + 1
-                                self.stations[stn_idx]["paranames"] = value_str[:p_end]
-                                z_vals = value_str[p_end:].split()
-                                if len(z_vals) >= 2:
-                                    self.stations[stn_idx]["zsup_lld"] = int(z_vals[0])
-                                    self.stations[stn_idx]["zsup_uld"] = int(z_vals[1])
-                        except Exception:
-                            pass
-                        break
-            elif label == "No. of 2d Spectra":
-                self.num_twod = int(value_str)
-            elif label.startswith("Spec. No.") and "XPr,Nx,YPr,Ny" in label:
-                vals = value_str.split()
-                if len(vals) >= 7:
-                    self.twod_spectra.append({
-                        "xpr": int(vals[0]), "nx": int(vals[1]),
-                        "ypr": int(vals[2]), "ny": int(vals[3]),
-                        "xsz": int(vals[4]), "ysz": int(vals[5]),
-                        "name": vals[6]
-                    })
-            elif label == "No. of Pseudo Parameters":
-                self.num_pseudo = int(value_str)
-            elif label.startswith("Pseudo No."):
-                vals = value_str.split()
-                if len(vals) >= 6:
-                    self.pseudo_params.append({
-                        "mode": int(vals[0]), "p1": int(vals[1]),
-                        "p2": int(vals[2]), "n1": int(vals[3]),
-                        "n2": int(vals[4]), "const": float(vals[5])
-                    })
+                        self.pseudo_params.append({
+                            "mode": int(vals[0]), "p1": int(vals[1]),
+                            "p2": int(vals[2]), "n1": int(vals[3]),
+                            "n2": int(vals[4]), "const": float(vals[5])
+                        })
                         
+            elif line_str.startswith("Twod Setup"):
+                pass
+            elif line_str.startswith("Pseudo Setup"):
+                pass
+
+            i += 1    
         self.parsed = True
         return True
 
@@ -157,8 +160,6 @@ class LampsSetupConfig:
         # This preserves all gates, spectra limits, and other things we aren't changing.
         out_lines = []
         i = 0
-        current_stn = -1
-        
         while i < len(self.raw_lines):
             line = self.raw_lines[i]
             line_str = line.strip('\n')
@@ -180,20 +181,41 @@ class LampsSetupConfig:
                 elif label.startswith("Stn.No.") and "Module,Lam,Mode" in label:
                     parts = label.replace("Stn.No.", "").split()
                     try:
-                        current_stn = int(parts[0])
-                        stn = self.stations[current_stn]
+                        stn_idx = int(parts[0])
+                        stn = self.stations[stn_idx]
                         val_str = f"{stn['module']} {stn['lam']} {stn['mode']} {stn['lld']} {stn['f']} {stn['gain']}"
                         out_lines.append(f"{label_padded}={val_str}\n")
+                        
+                        # Dynamically inject Silena/Phillips blocks
+                        if stn['module'] == 7:
+                            out_lines.append(f"{'Silena Offsets':<40}={stn['silena_offsets']}\n")
+                        if stn['module'] in (5, 7):
+                            out_lines.append(f"{'Lower Thresholds':<40}={stn['lower_thresholds']}\n")
+                            out_lines.append(f"{'Upper Thresholds':<40}={stn['upper_thresholds']}\n")
+
+                        # Consume old station lines
+                        while i + 1 < len(self.raw_lines):
+                            next_line = self.raw_lines[i + 1].strip('\n')
+                            if len(next_line) > 40 and next_line[40] == '=':
+                                next_label = next_line[:40].strip()
+                                if next_label in ("Silena Offsets", "Lower Thresholds", "Upper Thresholds"):
+                                    i += 1
+                                elif next_label == "Parameters, SubAddresses":
+                                    out_lines.append(f"{next_line[:40]}={stn['params']}\n")
+                                    i += 1
+                                elif next_label == "ParaNames, ZSupLLD, ZSupULD":
+                                    val_str = f"{stn['paranames']} {stn['zsup_lld']} {stn['zsup_uld']}"
+                                    out_lines.append(f"{next_line[:40]}={val_str}\n")
+                                    i += 1
+                                    break # End of block
+                                else:
+                                    break
+                            else:
+                                break
                     except Exception:
                         out_lines.append(line)
-                elif label == "Parameters, SubAddresses" and current_stn != -1:
-                    stn = self.stations[current_stn]
-                    out_lines.append(f"{label_padded}={stn['params']}\n")
-                elif label == "ParaNames, ZSupLLD, ZSupULD" and current_stn != -1:
-                    stn = self.stations[current_stn]
-                    val_str = f"{stn['paranames']} {stn['zsup_lld']} {stn['zsup_uld']}"
-                    out_lines.append(f"{label_padded}={val_str}\n")
-                    current_stn = -1 # reset
+                elif label in ("Silena Offsets", "Lower Thresholds", "Upper Thresholds", "Parameters, SubAddresses", "ParaNames, ZSupLLD, ZSupULD"):
+                    pass # Handled by the Stn.No. block logic
                 else:
                     out_lines.append(line)
             else:
