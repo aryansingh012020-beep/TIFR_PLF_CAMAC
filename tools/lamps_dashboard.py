@@ -35,7 +35,7 @@ from PyQt5.QtWidgets import (
     QCheckBox, QSizePolicy, QDoubleSpinBox, QSpinBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QSplitter,
     QDialog, QDialogButtonBox, QRadioButton, QButtonGroup,
-    QFileDialog, QMessageBox
+    QFileDialog, QMessageBox, QTabWidget
 )
 from PyQt5.QtCore import QTimer, Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QColor
@@ -1639,9 +1639,254 @@ class CalibrationDialog(QDialog):
 
 
 # ---------------------------------------------------------------------------
+# Phase 9: Waterfall / 2D time-evolution heatmap
+# ---------------------------------------------------------------------------
+class WaterfallPanel(QGroupBox):
+    """
+    Rolling 2D spectrogram using pyqtgraph.ImageItem.
+
+    Stores the last ``HISTORY`` spectra in a circular buffer
+    (shape: HISTORY x MAX_CHANNELS).  Every call to ``push(spectrum)``
+    adds one row.  The colourmap follows CERN/CMS convention: inferno
+    (perceptually uniform, unambiguous for colour-blind users).
+
+    Axes:
+      X  —  channel / energy  (same calibration as SpectrumPanel)
+      Y  —  time  (0 = oldest, top = newest)
+    """
+    HISTORY = 200   # number of spectra to keep
+
+    def __init__(self):
+        super().__init__("Waterfall (Time Evolution)")
+        self._n_chan     = MAX_CHANNELS
+        self._buf        = np.zeros((self.HISTORY, MAX_CHANNELS), dtype=np.float32)
+        self._write_idx  = 0          # next row to overwrite
+        self._cal_poly   = None       # np.poly1d, set when calibrated
+        self._build()
+
+    # ── Build ──────────────────────────────────────────────────────────────
+    def _build(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(4)
+
+        # Toolbar
+        toolbar = QHBoxLayout()
+
+        toolbar.addWidget(QLabel("History rows:"))
+        self.spin_history = QSpinBox()
+        self.spin_history.setRange(50, 1000)
+        self.spin_history.setValue(self.HISTORY)
+        self.spin_history.setFixedWidth(70)
+        self.spin_history.setStyleSheet(
+            "background:#1e1e1e; color:#eee; border:1px solid #333;"
+            "border-radius:4px; padding:2px 4px;"
+        )
+        self.spin_history.valueChanged.connect(self._resize_history)
+        toolbar.addWidget(self.spin_history)
+
+        toolbar.addSpacing(12)
+        toolbar.addWidget(QLabel("Colour scale:"))
+        self.cmb_cmap = QComboBox()
+        self.cmb_cmap.setFixedWidth(100)
+        self.cmb_cmap.addItems(["inferno", "viridis", "plasma", "magma"])
+        self.cmb_cmap.currentTextChanged.connect(self._apply_cmap)
+        toolbar.addWidget(self.cmb_cmap)
+
+        toolbar.addSpacing(12)
+        self.btn_clear = QPushButton("Clear")
+        self.btn_clear.setFixedWidth(56)
+        self.btn_clear.setStyleSheet(
+            "QPushButton{color:#aaa;background:#1e1e1e;border:1px solid #333;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
+            "QPushButton:hover{background:#2a2a2a;}"
+        )
+        self.btn_clear.clicked.connect(self._clear)
+        toolbar.addWidget(self.btn_clear)
+        toolbar.addStretch()
+        layout.addLayout(toolbar)
+
+        # Plot widget
+        self._pw = pg.PlotWidget(background="#0a0a0a")
+        self._pw.setLabel("left",   "Time step (oldest → newest)")
+        self._pw.setLabel("bottom", "Channel")
+        self._pw.showGrid(x=True, y=True, alpha=0.15)
+
+        self._img = pg.ImageItem()
+        self._pw.addItem(self._img)
+
+        # Colour bar
+        self._cbar = pg.ColorBarItem(
+            values=(0, 1), colorMap="inferno", label="Counts"
+        )
+        self._cbar.setImageItem(self._img, insert_in=self._pw.getPlotItem())
+
+        layout.addWidget(self._pw, stretch=1)
+
+        self._apply_cmap("inferno")
+
+    # ── Public API ──────────────────────────────────────────────────────────
+    def push(self, spectrum: np.ndarray):
+        """Add one spectrum row to the circular buffer and refresh the view."""
+        row = spectrum[:MAX_CHANNELS].astype(np.float32)
+        if len(row) < MAX_CHANNELS:
+            row = np.pad(row, (0, MAX_CHANNELS - len(row)))
+        self._buf[self._write_idx] = row
+        self._write_idx = (self._write_idx + 1) % len(self._buf)
+        self._refresh()
+
+    def set_calibration(self, cal_poly):
+        """Pass a calibrated np.poly1d so the x-axis shows keV."""
+        self._cal_poly = cal_poly
+        if cal_poly is not None:
+            self._pw.setLabel("bottom", "Energy (keV)")
+        else:
+            self._pw.setLabel("bottom", "Channel")
+
+    # ── Private ─────────────────────────────────────────────────────────────
+    def _refresh(self):
+        # Reorder circular buffer so newest row is at the top
+        ordered = np.roll(self._buf, -self._write_idx, axis=0)
+        # Log-scale for better dynamic range (Compton background is huge)
+        safe = np.where(ordered > 0, ordered, 0.1)
+        display = np.log10(safe).T   # transpose: shape (channels, time)
+        self._img.setImage(display, autoLevels=True)
+
+    def _resize_history(self, n):
+        self.HISTORY = n
+        new_buf = np.zeros((n, MAX_CHANNELS), dtype=np.float32)
+        old_len = len(self._buf)
+        if old_len <= n:
+            new_buf[:old_len] = self._buf
+        else:
+            # Keep the most recent n rows
+            ordered = np.roll(self._buf, -self._write_idx, axis=0)
+            new_buf = ordered[-n:]
+        self._buf = new_buf
+        self._write_idx = 0
+
+    def _apply_cmap(self, name):
+        try:
+            self._img.setColorMap(name)
+            self._cbar.setColorMap(name)
+        except Exception:
+            pass   # old pyqtgraph versions may not support setColorMap on cbar
+
+    def _clear(self):
+        self._buf[:] = 0
+        self._write_idx = 0
+        self._refresh()
+
+
+# ---------------------------------------------------------------------------
+# Phase 8: Dead-Time Gauge widget
+# ---------------------------------------------------------------------------
+class DeadTimeGauge(QWidget):
+    """
+    Colour-coded progress bar showing DAQ dead time.
+
+    Thresholds follow IAEA and Knoll conventions:
+      0–5 %   → green  (safe)
+      5–20 %  → yellow (marginal)
+      20–50 % → orange (caution)
+      >50 %   → red    (critical)
+    """
+    def __init__(self):
+        super().__init__()
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        lbl = QLabel("Dead Time:")
+        lbl.setStyleSheet("color:#888; font-size:9pt;")
+        lbl.setFixedWidth(80)
+        layout.addWidget(lbl)
+
+        self._bar = pg.PlotWidget(background="#111")
+        self._bar.setFixedHeight(22)
+        self._bar.setFixedWidth(200)
+        self._bar.setXRange(0, 100, padding=0)
+        self._bar.setYRange(0, 1,   padding=0)
+        self._bar.getPlotItem().hideAxis("left")
+        self._bar.getPlotItem().hideAxis("bottom")
+        self._bar.getPlotItem().setContentsMargins(0, 0, 0, 0)
+        self._fill = pg.BarGraphItem(x=[50], height=[1], width=[100],
+                                     brush="#1aff6e")
+        self._bar.addItem(self._fill)
+        layout.addWidget(self._bar)
+
+        self.lbl_pct = QLabel("—")
+        self.lbl_pct.setStyleSheet("color:#eee; font-size:9pt; font-weight:bold;")
+        self.lbl_pct.setFixedWidth(52)
+        layout.addWidget(self.lbl_pct)
+
+        self._pile_toggle = QCheckBox("Pile-up corr.")
+        self._pile_toggle.setStyleSheet("color:#888; font-size:8pt;")
+        layout.addWidget(self._pile_toggle)
+
+        self._shaping_us = QDoubleSpinBox()
+        self._shaping_us.setRange(0.1, 100.0)
+        self._shaping_us.setValue(2.0)
+        self._shaping_us.setSuffix(" µs")
+        self._shaping_us.setFixedWidth(72)
+        self._shaping_us.setToolTip("Shaping time constant for pile-up correction")
+        self._shaping_us.setStyleSheet(
+            "background:#1e1e1e; color:#eee; border:1px solid #333;"
+            "border-radius:3px; padding:1px 3px; font-size:8pt;"
+        )
+        layout.addWidget(self._shaping_us)
+        layout.addStretch()
+
+    # ── Public API ──────────────────────────────────────────────────────────
+    def update_dead_time(self, bufs_acq, bufs_proc, ev_rate=None):
+        """
+        Compute and display dead time.
+
+        Parameters
+        ----------
+        bufs_acq, bufs_proc  : int or None  — EPICS buffer counters
+        ev_rate              : float or None — measured count rate (evt/s)
+        """
+        dt_pct = None
+        if bufs_acq is not None and bufs_proc is not None and bufs_acq > 0:
+            dt_pct = 100.0 * (bufs_acq - bufs_proc) / bufs_acq
+
+        if dt_pct is None:
+            self.lbl_pct.setText("—")
+            self._fill.setOpts(x=[50], width=[0])
+            return
+
+        # Colour thresholds
+        if dt_pct < 5:
+            colour = "#1aff6e"
+        elif dt_pct < 20:
+            colour = "#ffcc00"
+        elif dt_pct < 50:
+            colour = "#ff8800"
+        else:
+            colour = "#ff3333"
+
+        self._fill.setOpts(
+            x=[dt_pct / 2], width=[dt_pct], brush=colour
+        )
+        self.lbl_pct.setText(f"{dt_pct:5.1f}%")
+        self.lbl_pct.setStyleSheet(f"color:{colour}; font-size:9pt; font-weight:bold;")
+
+        # Optionally display pile-up corrected rate
+        if (self._pile_toggle.isChecked() and ev_rate is not None
+                and ev_rate > 0):
+            tau_s = self._shaping_us.value() * 1e-6
+            corr  = ev_rate / max(1.0 - ev_rate * tau_s, 1e-6)
+            self.lbl_pct.setToolTip(
+                f"Pile-up corrected rate: {corr:,.0f} evt/s\n"
+                f"(shaping time = {self._shaping_us.value()} µs)"
+            )
+
+
+# ---------------------------------------------------------------------------
 # Main window — assembles all panels
 # ---------------------------------------------------------------------------
 class LampsDashboard(QMainWindow):
+
     def __init__(self, proxy: EpicsProxy,
                  sim: 'SimulatedBackend | None' = None):
         super().__init__()
@@ -1698,6 +1943,10 @@ class LampsDashboard(QMainWindow):
         for m in [self.m_run_name, self.m_elapsed, self.m_total_ev,
                   self.m_event_rate, self.m_bufs_acq, self.m_bufs_proc]:
             ml.addWidget(m)
+        # Dead-time gauge (Phase 8)
+        self.dt_gauge = DeadTimeGauge()
+        ml.addSpacing(6)
+        ml.addWidget(self.dt_gauge)
         ml.addStretch()
         self.lbl_ts = QLabel("—")
         self.lbl_ts.setStyleSheet("color:#333; font-size:8pt;")
@@ -1710,9 +1959,23 @@ class LampsDashboard(QMainWindow):
         left.addStretch()
         body.addLayout(left)
 
-        # Right column: spectrum panel (Phase 7.1 + 7.3)
+        # Right column: tab widget with Spectrum + Waterfall (Phases 7 & 9)
+        self._tabs = QTabWidget()
+        self._tabs.setStyleSheet(
+            "QTabWidget::pane{border:1px solid #222; border-radius:4px;}"
+            "QTabBar::tab{background:#1a1a1a; color:#777; padding:5px 16px;"
+            "border:1px solid #222; border-bottom:none; border-radius:4px 4px 0 0;}"
+            "QTabBar::tab:selected{background:#141414; color:#eee;}"
+            "QTabBar::tab:hover{color:#ccc;}"
+        )
+
         self.spec_panel = SpectrumPanel(self._epics)
-        body.addWidget(self.spec_panel, stretch=1)
+        self._tabs.addTab(self.spec_panel, "Spectrum")
+
+        self.waterfall_panel = WaterfallPanel()
+        self._tabs.addTab(self.waterfall_panel, "Waterfall")
+
+        body.addWidget(self._tabs, stretch=1)
         root.addLayout(body)
 
         # ── Bottom bar ───────────────────────────────────────────────────────
@@ -1835,6 +2098,9 @@ class LampsDashboard(QMainWindow):
         self.m_bufs_acq.set(str(int(bufs_acq))         if bufs_acq  is not None else "—")
         self.m_bufs_proc.set(str(int(bufs_proc))       if bufs_proc is not None else "—")
 
+        # Phase 8: update dead-time gauge
+        self.dt_gauge.update_dead_time(bufs_acq, bufs_proc, ev_rate=ev_rate)
+
         self.lbl_ts.setText(f"Updated: {time.strftime('%H:%M:%S')}")
         is_run = (status == "RUNNING")
         if self._sim is not None:
@@ -1857,6 +2123,10 @@ class LampsDashboard(QMainWindow):
         # Keep poller's detector in sync with the combo box selection
         self._poller.set_detector(self.spec_panel.current_detector)
         self.spec_panel.update_spectrum(data)
+        # Phase 9: feed waterfall — push only when tab is visible for performance
+        self.waterfall_panel.push(data)
+        # Sync calibration to waterfall
+        self.waterfall_panel.set_calibration(self.spec_panel._cal_poly)
 
 
 # ---------------------------------------------------------------------------
