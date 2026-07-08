@@ -492,7 +492,7 @@ class ControlPanel(QGroupBox):
         self.btn_start = self._btn("START",  "#00aa44", "#003318")
         self.btn_stop  = self._btn("STOP",   "#cc3300", "#330d00")
         self.btn_reset = self._btn("RESET",  "#aa6600", "#2a1800")
-        self.btn_load_driver = self._btn("LOAD DRIVER", "#00d8ff", "#002b33")
+        self.btn_load_driver = self._btn("LAUNCH BACKEND", "#00d8ff", "#002b33")
         self.btn_start.clicked.connect(self._do_start)
         self.btn_stop.clicked.connect(self._do_stop)
         self.btn_reset.clicked.connect(self._do_reset)
@@ -605,20 +605,36 @@ class ControlPanel(QGroupBox):
         
         def _run_loader():
             import subprocess
+            import time
             try:
-                # Use pkexec to prompt for password via GUI and run the legacy driver script
-                process = subprocess.Popen(["pkexec", "./ldcmc100"], 
-                                           stdout=subprocess.PIPE, 
-                                           stderr=subprocess.PIPE,
-                                           text=True)
-                stdout, stderr = process.communicate(timeout=20)
-                if process.returncode == 0:
-                    QTimer.singleShot(0, lambda: self._fb("Driver loaded successfully", "#1aff6e"))
-                else:
-                    err = stderr.strip() or stdout.strip() or "Unknown error"
-                    QTimer.singleShot(0, lambda: self._fb(f"Driver load failed: {err}", "#ff4444"))
+                # 1. Load the driver
+                QTimer.singleShot(0, lambda: self._fb("Loading driver (pkexec)...", "#aaa"))
+                p_drv = subprocess.Popen(["pkexec", "./ldcmc100"], 
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                out, err = p_drv.communicate(timeout=20)
+                if p_drv.returncode != 0:
+                    QTimer.singleShot(0, lambda: self._fb(f"Driver load failed: {err.strip()}", "#ff4444"))
+                    return
+
+                # 2. Start IOC
+                QTimer.singleShot(0, lambda: self._fb("Starting EPICS IOC...", "#aaa"))
+                subprocess.Popen(["./run_ioc.sh"], cwd="src", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                time.sleep(2)
+                
+                # 3. Start LAMPS (DAQ server)
+                QTimer.singleShot(0, lambda: self._fb("Starting LAMPS Backend...", "#aaa"))
+                subprocess.Popen(["./lamps"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                # Wait for LAMPS GTK window to initialize shared memory
+                time.sleep(4)
+                
+                # 4. Start EPICS Bridge
+                QTimer.singleShot(0, lambda: self._fb("Starting EPICS Bridge...", "#aaa"))
+                subprocess.Popen(["./run_bridge.sh"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                QTimer.singleShot(0, lambda: self._fb("Backend Stack Started!", "#1aff6e"))
             except Exception as e:
-                QTimer.singleShot(0, lambda: self._fb(f"Error: {e}", "#ff4444"))
+                QTimer.singleShot(0, lambda: self._fb(f"Launch Error: {e}", "#ff4444"))
 
         import threading
         t = threading.Thread(target=_run_loader, daemon=True)
