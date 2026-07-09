@@ -624,6 +624,70 @@ class _EpicsPutWorker(QThread):
         self.done.emit(self._label, ok)
 
 
+class _BackendLaunchWorker(QThread):
+    """
+    Runs the 4-step backend boot sequence in a background QThread.
+    Emits step_update(str, str) with (message, colour) for each step,
+    and finished_launch(bool, str) when done.
+    All signal emissions are safe across threads.
+    """
+    step_update      = pyqtSignal(str, str)  # (message, colour)
+    finished_launch  = pyqtSignal(bool, str) # (success, message)
+
+    def __init__(self, src_dir: str, parent=None):
+        super().__init__(parent)
+        self._src_dir = src_dir
+
+    def run(self):
+        import subprocess, time
+        try:
+            # Step 1: LAMPS C GUI (creates shared memory)
+            self.step_update.emit("[1/4] Starting LAMPS (./lamps)…", "#aaa")
+            subprocess.Popen(["./lamps"],
+                             cwd=self._src_dir,
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+            time.sleep(3)
+
+            # Step 2: CAMAC kernel driver (needs root via pkexec)
+            self.step_update.emit("[2/4] Loading CAMAC driver (pkexec ldcmc100)…", "#ffcc44")
+            p_drv = subprocess.Popen(
+                ["pkexec", os.path.join(self._src_dir, "ldcmc100")],
+                cwd=self._src_dir,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )
+            try:
+                _, err = p_drv.communicate(timeout=25)
+            except subprocess.TimeoutExpired:
+                p_drv.kill()
+                self.finished_launch.emit(False, "Driver timed out after 25 s")
+                return
+            if p_drv.returncode != 0:
+                self.finished_launch.emit(False, f"Driver failed: {err.strip()[:120]}")
+                return
+
+            # Step 3: EPICS IOC
+            self.step_update.emit("[3/4] Starting EPICS IOC (src/run_ioc.sh)…", "#aaa")
+            subprocess.Popen(["./run_ioc.sh"],
+                             cwd=os.path.join(self._src_dir, "src"),
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+            time.sleep(2)
+
+            # Step 4: EPICS Bridge
+            self.step_update.emit("[4/4] Starting EPICS Bridge (run_bridge.sh)…", "#aaa")
+            subprocess.Popen(["./run_bridge.sh"],
+                             cwd=self._src_dir,
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+
+            self.finished_launch.emit(True, "✓ Backend stack running")
+        except FileNotFoundError as e:
+            self.finished_launch.emit(False, f"Not found: {e.filename}")
+        except Exception as e:
+            self.finished_launch.emit(False, f"Error: {e}")
+
+
 class ControlPanel(QGroupBox):
     """
     Run control panel: START / STOP / RESET buttons.
@@ -674,7 +738,7 @@ class ControlPanel(QGroupBox):
         self.btn_stop  = self._btn("STOP",   "#cc3300", "#330d00")
         self.btn_reset = self._btn("RESET",  "#aa6600", "#2a1800")
         self.btn_load_driver = self._btn("LAUNCH BACKEND", "#00d8ff", "#002b33")
-        self.btn_replay = self._btn("≡ƒôé REPLAY .zls", "#5588cc", "#001122")
+        self.btn_replay = self._btn("📂 REPLAY .zls", "#5588cc", "#001122")
         self.btn_start.clicked.connect(self._do_start)
         self.btn_stop.clicked.connect(self._do_stop)
         self.btn_reset.clicked.connect(self._do_reset)
@@ -682,6 +746,12 @@ class ControlPanel(QGroupBox):
         self.btn_replay.clicked.connect(self._do_replay)
         for b in [self.btn_start, self.btn_stop, self.btn_reset, self.btn_load_driver, self.btn_replay]:
             btn_row.addWidget(b)
+        
+        # ● LED indicator for backend launch state
+        self.lbl_driver_led = QLabel("● IDLE")
+        self.lbl_driver_led.setStyleSheet("color:#333; font-size:9pt; font-family:monospace;")
+        btn_row.addSpacing(6)
+        btn_row.addWidget(self.lbl_driver_led)
         layout.addLayout(btn_row)
 
         self.lbl_fb = QLabel("")
@@ -778,50 +848,51 @@ class ControlPanel(QGroupBox):
         if self._debounce_timer.isActive():
             return
         self._debounce_timer.start()
-        
+
         if sys.platform == "win32":
-            QMessageBox.information(self, "Load Driver", "LAMPS now uses WinUSB via libusb on Windows.\nThere is no kernel driver to load natively.")
-            self._fb("Windows driverless mode active", "#00d8ff")
+            QMessageBox.information(
+                self, "Load Driver",
+                "LAMPS uses WinUSB/libusb on Windows.\nNo kernel driver to load."
+            )
+            self._set_driver_led("IDLE", "#555")
             return
-            
-        self._fb("Launching Backend Stack...", "#aaa")
-        
-        def _run_loader():
-            import subprocess
-            import time
-            try:
-                # 1. Start LAMPS (DAQ server & GUI)
-                QTimer.singleShot(0, lambda: self._fb("Starting LAMPS Backend...", "#aaa"))
-                subprocess.Popen(["./lamps"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                
-                # Wait for LAMPS GTK window to initialize shared memory
-                time.sleep(3)
 
-                # 2. Load the driver
-                QTimer.singleShot(0, lambda: self._fb("Loading driver (pkexec)...", "#aaa"))
-                p_drv = subprocess.Popen(["pkexec", "./ldcmc100"], 
-                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                out, err = p_drv.communicate(timeout=20)
-                if p_drv.returncode != 0:
-                    QTimer.singleShot(0, lambda: self._fb(f"Driver load failed: {err.strip()}", "#ff4444"))
-                    return
+        # Disable button to prevent double-fire during the launch sequence
+        self.btn_load_driver.setEnabled(False)
+        self._set_driver_led("BUSY", "#ffcc44")
+        self._fb("Launching backend…", "#aaa")
 
-                # 3. Start IOC
-                QTimer.singleShot(0, lambda: self._fb("Starting EPICS IOC...", "#aaa"))
-                subprocess.Popen(["./run_ioc.sh"], cwd="src", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                time.sleep(2)
-                
-                # 4. Start EPICS Bridge
-                QTimer.singleShot(0, lambda: self._fb("Starting EPICS Bridge...", "#aaa"))
-                subprocess.Popen(["./run_bridge.sh"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                
-                QTimer.singleShot(0, lambda: self._fb("Backend Stack Started!", "#1aff6e"))
-            except Exception as e:
-                QTimer.singleShot(0, lambda: self._fb(f"Launch Error: {e}", "#ff4444"))
+        # Determine the repo root (parent of the tools/ directory)
+        _src = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-        import threading
-        t = threading.Thread(target=_run_loader, daemon=True)
-        t.start()
+        self._launch_worker = _BackendLaunchWorker(_src, parent=self)
+        self._launch_worker.step_update.connect(self._on_launch_step)
+        self._launch_worker.finished_launch.connect(self._on_launch_done)
+        self._launch_worker.start()
+
+    def _on_launch_step(self, msg: str, colour: str):
+        self._fb(msg, colour)
+        self._set_driver_led("BUSY", "#ffcc44")
+
+    def _on_launch_done(self, ok: bool, msg: str):
+        self.btn_load_driver.setEnabled(True)
+        if ok:
+            self._set_driver_led("RUNNING", "#1aff6e")
+            self._fb(msg, "#1aff6e")
+        else:
+            self._set_driver_led("FAILED", "#ff4444")
+            self._fb(f"✗ {msg}", "#ff4444")
+            QMessageBox.critical(
+                self, "Backend Launch Failed",
+                f"{msg}\n\nCheck that lamps, ldcmc100, run_ioc.sh and run_bridge.sh "
+                "are present in the repo root and that pkexec is configured."
+            )
+
+    def _set_driver_led(self, state: str, colour: str):
+        self.lbl_driver_led.setText(f"● {state}")
+        self.lbl_driver_led.setStyleSheet(
+            f"color:{colour}; font-size:9pt; font-family:monospace; font-weight:bold;"
+        )
 
     def _on_put_done(self, label: str, ok: bool):
         # Clean up finished worker references
