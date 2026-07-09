@@ -35,7 +35,7 @@ from PyQt5.QtWidgets import (
     QCheckBox, QSizePolicy, QDoubleSpinBox, QSpinBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QSplitter,
     QDialog, QDialogButtonBox, QRadioButton, QButtonGroup,
-    QFileDialog, QMessageBox
+    QFileDialog, QMessageBox, QTabWidget
 )
 from PyQt5.QtCore import QTimer, Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QColor
@@ -68,6 +68,114 @@ try:
 except ImportError:
     EPICS_AVAILABLE = False
     print("[WARN] pyepics not found — will use simulated data", file=sys.stderr)
+
+# ---------------------------------------------------------------------------
+# Optional: analysis modules from tools/analysis/
+# ---------------------------------------------------------------------------
+try:
+    import sys as _sys
+    import os as _os
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    import analysis.isotopeid as _iso_module
+    ISOTOPE_LIBRARY = _iso_module.load_library()
+except Exception:
+    ISOTOPE_LIBRARY = {}
+
+try:
+    import config_editor as _config_editor
+    CONFIG_EDITOR_AVAILABLE = True
+except Exception:
+    CONFIG_EDITOR_AVAILABLE = False
+    print("[WARN] config_editor not found — Setup tab disabled", file=sys.stderr)
+
+try:
+    import analysis.export as _export_module
+    EXPORT_AVAILABLE = True
+except Exception:
+    EXPORT_AVAILABLE = False
+    print("[WARN] analysis.export not found — SPE/CSV export disabled", file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------
+# LAMPS spectrum file readers
+# ---------------------------------------------------------------------------
+def read_z1d(filepath: str) -> np.ndarray:
+    """
+    Read a LAMPS .z1d 1D spectrum file.
+
+    Format (from iospec.c):
+      - If WSz==1 (16-bit): raw array of uint16
+      - If WSz==2 (32-bit): raw array of uint32
+    Word size is inferred from file size vs channel count.
+    We try uint32 first (most common on modern setups);
+    fall back to uint16 if the result looks wrong.
+    """
+    size = os.path.getsize(filepath)
+    # Try uint32 first
+    d32 = np.fromfile(filepath, dtype=np.uint32)
+    d16 = np.fromfile(filepath, dtype=np.uint16)
+    # Heuristic: uint32 is correct if max value is large relative to uint16 max
+    # or if file size is a multiple of 4 and not plausible as uint16 data
+    # Simple rule: if the uint32 sum > uint16 sum it likely stored bigger values
+    if d32.max() > 65535 or (size % 4 == 0 and d32.sum() > d16.sum()):
+        return d32.astype(np.float32)
+    return d16.astype(np.float32)
+
+
+def read_z2d(filepath: str):
+    """
+    Read a LAMPS .z2d 2D spectrum file.
+
+    Format (from iospec.c Write2d32/Write2d16):
+      uint16  XSize
+      uint16  YSize
+      then for each row Y:
+        repeating pairs:
+          uint16 NZer   (number of zeros to skip)
+          uint16 NDat   (number of data words that follow)
+          NDat x uint16 or uint32 data
+
+    Returns (hist2d: ndarray shape [XSize, YSize], xsize, ysize).
+    Word size (16 vs 32-bit) is auto-detected from the file.
+    """
+    import struct
+    with open(filepath, 'rb') as fp:
+        raw = fp.read()
+
+    xsize, ysize = struct.unpack_from('<HH', raw, 0)
+    offset = 4
+
+    # Try to detect word size: attempt 32-bit decode first
+    for word_bytes, dtype in [(4, np.uint32), (2, np.uint16)]:
+        hist = np.zeros((xsize, ysize), dtype=np.uint32)
+        ok = True
+        try:
+            off = offset
+            for row in range(ysize):
+                p1 = 0
+                while p1 < xsize:
+                    if off + 4 > len(raw):
+                        raise ValueError("truncated")
+                    n_zer, n_dat = struct.unpack_from('<HH', raw, off)
+                    off += 4
+                    p1 += n_zer
+                    if n_dat > 0:
+                        end = off + n_dat * word_bytes
+                        if end > len(raw):
+                            raise ValueError("truncated data")
+                        chunk = np.frombuffer(raw[off:end], dtype=dtype)
+                        if p1 + n_dat > xsize:
+                            raise ValueError("overflow")
+                        hist[p1: p1 + n_dat, row] = chunk
+                        off += n_dat * word_bytes
+                        p1 += n_dat
+        except Exception:
+            ok = False
+        if ok:
+            return hist.astype(np.float32), xsize, ysize
+
+    # Fallback: return empty
+    return np.zeros((xsize, ysize), dtype=np.float32), xsize, ysize
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -355,7 +463,10 @@ class EpicsPoller(QThread):
                 # Advance simulator at ~5 Hz regardless of poll rate
                 self._sim_subtick = (self._sim_subtick + 1) % max(1, 1000 // (SimulatedBackend.SIM_HZ * REFRESH_MS))
                 if self._sim_subtick == 0:
-                    self._sim.tick()
+                    # Only call tick() on SimulatedBackend — replay backends
+                    # run their own thread and have no tick() method.
+                    if hasattr(self._sim, 'tick') and callable(self._sim.tick):
+                        self._sim.tick()
 
                 metrics = self._sim.get_metrics()
                 self.metrics_ready.emit(metrics)
@@ -478,6 +589,11 @@ class ControlPanel(QGroupBox):
             btn_row.addWidget(b)
         layout.addLayout(btn_row)
 
+        # Replay button (ZLS list-mode file replay)
+        self.btn_replay = self._btn("⏵  REPLAY .zls", "#5588cc", "#001133")
+        self.btn_replay.clicked.connect(self._do_replay)
+        layout.addWidget(self.btn_replay)
+
         self.lbl_fb = QLabel("")
         self.lbl_fb.setStyleSheet("color:#666; font-size:8pt;")
         self.lbl_fb.setAlignment(Qt.AlignCenter)
@@ -548,6 +664,14 @@ class ControlPanel(QGroupBox):
         self.lbl_fb.setStyleSheet(f"color:{color}; font-size:8pt;")
         QTimer.singleShot(4000, lambda: self.lbl_fb.setText(""))
 
+    def _do_replay(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select ZLS file", "",
+            "List Mode files (*.zls);;All files (*)"
+        )
+        if path:
+            self.command_issued.emit(f"REPLAY:{path}")
+
 
 # ---------------------------------------------------------------------------
 # Phase 7.3: Spectrum Panel (plot + tools)
@@ -563,13 +687,14 @@ class SpectrumPanel(QGroupBox):
     """
     def __init__(self, epics_proxy: EpicsProxy):
         super().__init__("Live Spectrum")
-        self._epics = epics_proxy
+        self._epics       = epics_proxy
         self._current_det = 1
-        self._data       = np.zeros(MAX_CHANNELS, dtype=np.float32)
-        self._log_mode   = False
-        self._peak_lines = []   # Phase 7.4: vertical marker InfiniteLines
-        self._fit_curves = []   # Phase 7.5: Gaussian fit PlotDataItems
-        self._cal_poly   = None # Phase 7.6: np.poly1d object when calibrated
+        self._data        = np.zeros(MAX_CHANNELS, dtype=np.float32)
+        self._log_mode    = False
+        self._peak_lines  = []    # Phase 7.4: vertical marker InfiniteLines
+        self._fit_curves  = []    # Phase 7.5: Gaussian fit PlotDataItems
+        self._cal_poly    = None  # Phase 7.6: np.poly1d object when calibrated
+        self._frozen      = False # True when a file is loaded — pauses live updates
         self._build()
 
     # ── Build ───────────────────────────────────────────────────────────────
@@ -623,6 +748,64 @@ class SpectrumPanel(QGroupBox):
         )
         self.btn_cal.clicked.connect(self._open_calibration_dialog)
         row1.addWidget(self.btn_cal)
+
+        # Load .z1d file button
+        self.btn_load_z1d = QPushButton("📂 Load .z1d")
+        self.btn_load_z1d.setFixedWidth(90)
+        self.btn_load_z1d.setStyleSheet(
+            "QPushButton{color:#ffaa44;background:#1a1000;border:1px solid #664400;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
+            "QPushButton:hover{background:#2a1800;border-color:#ffaa44;}"
+        )
+        self.btn_load_z1d.clicked.connect(self._load_z1d_file)
+        row1.addWidget(self.btn_load_z1d)
+
+        # Export buttons (SPE + CSV)
+        self.btn_export_spe = QPushButton("📥 SPE")
+        self.btn_export_spe.setFixedWidth(60)
+        self.btn_export_spe.setToolTip("Export spectrum as IAEA/Maestro SPE file")
+        self.btn_export_spe.setStyleSheet(
+            "QPushButton{color:#aaddff;background:#0d1a26;border:1px solid #336699;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
+            "QPushButton:hover{background:#132639;border-color:#aaddff;}"
+        )
+        self.btn_export_spe.clicked.connect(self._export_spe)
+        row1.addWidget(self.btn_export_spe)
+
+        self.btn_export_csv = QPushButton("📥 CSV")
+        self.btn_export_csv.setFixedWidth(60)
+        self.btn_export_csv.setToolTip("Export spectrum as ROOT-compatible CSV")
+        self.btn_export_csv.setStyleSheet(
+            "QPushButton{color:#aaddff;background:#0d1a26;border:1px solid #336699;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
+            "QPushButton:hover{background:#132639;border-color:#aaddff;}"
+        )
+        self.btn_export_csv.clicked.connect(self._export_csv)
+        row1.addWidget(self.btn_export_csv)
+
+        # Load CSV (offline viewer)
+        self.btn_load_csv = QPushButton("📂 Load CSV")
+        self.btn_load_csv.setFixedWidth(84)
+        self.btn_load_csv.setToolTip("Load a ROOT-CSV spectrum offline")
+        self.btn_load_csv.setStyleSheet(
+            "QPushButton{color:#aaffaa;background:#0d261a;border:1px solid #339966;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
+            "QPushButton:hover{background:#133926;border-color:#aaffaa;}"
+        )
+        self.btn_load_csv.clicked.connect(self._load_csv)
+        row1.addWidget(self.btn_load_csv)
+
+        # Resume live (shown only when offline)
+        self.btn_resume_live = QPushButton("▶ Resume Live")
+        self.btn_resume_live.setFixedWidth(96)
+        self.btn_resume_live.setStyleSheet(
+            "QPushButton{color:#ffaaaa;background:#260d0d;border:1px solid #993333;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;font-weight:bold;}"
+            "QPushButton:hover{background:#391313;border-color:#ffaaaa;}"
+        )
+        self.btn_resume_live.clicked.connect(self._unfreeze)
+        self.btn_resume_live.setVisible(False)
+        row1.addWidget(self.btn_resume_live)
 
         # Calibration active indicator
         self.lbl_cal_active = QLabel("")
@@ -836,6 +1019,9 @@ class SpectrumPanel(QGroupBox):
     # ── Public API used by the main window ──────────────────────────────────
     def update_spectrum(self, data: np.ndarray):
         """Set new spectrum data and refresh plot + ROI + peak markers."""
+        # When a file is frozen/loaded, ignore live poller updates
+        if self._frozen:
+            return
         # Guard: ignore empty arrays (PV not yet connected)
         if data is None or (hasattr(data, '__len__') and len(data) == 0):
             return
@@ -1169,6 +1355,145 @@ class SpectrumPanel(QGroupBox):
         except (IndexError, ValueError):
             return None
 
+    # ── Load .z1d / .z2d spectrum files ─────────────────────────────────────
+    def _load_z1d_file(self):
+        """Open a file dialog, read a .z1d file and display it."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load 1D Spectrum", "",
+            "LAMPS 1D Spectrum (*.z1d);;All files (*)"
+        )
+        if not path:
+            return
+        try:
+            data = read_z1d(path)
+        except Exception as e:
+            QMessageBox.critical(self, "Load failed", str(e))
+            return
+        # Freeze live updates so the poller doesn't overwrite this
+        self._frozen = True
+        import os as _os
+        basename = _os.path.basename(path)
+        self.lbl_cal_active.setText(f"[📂 {basename}]")
+        self.lbl_cal_active.setStyleSheet(
+            "color:#ffaa44; font-size:8pt; font-style:italic;"
+        )
+        self.btn_resume_live.setVisible(True)
+        self.btn_load_csv.setVisible(False)
+        self.btn_load_z1d.setVisible(False)
+        # Display — bypass the frozen guard by setting _data directly
+        self._data = data[:MAX_CHANNELS].copy()
+        self._frozen = False          # temporarily unfreeze to draw once
+        self.update_spectrum(self._data)
+        self._frozen = True           # re-freeze after drawing
+        self._clear_peak_markers()
+        self.plot.autoRange()
+
+    def _unfreeze(self):
+        """Resume live EPICS/sim updates and clear the file label."""
+        self._frozen = False
+        # Restore cal label if calibration is active
+        if self._cal_poly is not None:
+            self.lbl_cal_active.setStyleSheet(
+                "color:#bb88ff; font-size:8pt; font-style:italic;"
+            )
+        else:
+            self.lbl_cal_active.setText("")
+            self.lbl_cal_active.setStyleSheet(
+                "color:#bb88ff; font-size:8pt; font-style:italic;"
+            )
+        self.btn_resume_live.setVisible(False)
+        self.btn_load_csv.setVisible(True)
+        self.btn_load_z1d.setVisible(True)
+
+    def _export_spe(self):
+        """Export current spectrum as IAEA/Maestro .spe file."""
+        if not EXPORT_AVAILABLE:
+            QMessageBox.warning(self, "Export unavailable",
+                                "analysis.export module not found.")
+            return
+        if not self._data.any():
+            QMessageBox.information(self, "No data", "No spectrum data to export.")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export SPE", "spectrum.spe",
+            "IAEA SPE (*.spe);;All files (*)"
+        )
+        if path:
+            ok = _export_module.export_spe(path, self._data)
+            if ok:
+                QMessageBox.information(self, "Exported", f"SPE saved to:\n{path}")
+            else:
+                QMessageBox.critical(self, "Export failed", "Could not write SPE file.")
+
+    def _export_csv(self):
+        """Export current spectrum as ROOT-compatible CSV."""
+        if not EXPORT_AVAILABLE:
+            QMessageBox.warning(self, "Export unavailable",
+                                "analysis.export module not found.")
+            return
+        if not self._data.any():
+            QMessageBox.information(self, "No data", "No spectrum data to export.")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export ROOT-CSV", "spectrum.csv",
+            "CSV files (*.csv);;All files (*)"
+        )
+        if path:
+            ok = _export_module.export_root_csv(path, self._data,
+                                                 cal_poly=self._cal_poly)
+            if ok:
+                QMessageBox.information(self, "Exported", f"ROOT-CSV saved to:\n{path}")
+            else:
+                QMessageBox.critical(self, "Export failed", "Could not write CSV file.")
+
+    def _load_csv(self):
+        """Load a ROOT-CSV spectrum offline (freezes live updates)."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load ROOT-CSV", "",
+            "CSV files (*.csv);;All files (*)"
+        )
+        if not path:
+            return
+        try:
+            # Try with header first (channel,counts,energy_keV format)
+            try:
+                data = np.loadtxt(path, delimiter=',', skiprows=1)
+            except (ValueError, StopIteration):
+                data = np.loadtxt(path, delimiter=',')
+
+            if data.ndim == 1:
+                counts = data
+            elif data.ndim == 2 and data.shape[1] >= 2:
+                counts = data[:, 1]   # column 1 = counts
+            elif data.ndim == 2 and data.shape[1] == 1:
+                counts = data[:, 0]
+            else:
+                QMessageBox.warning(self, "Error",
+                                    "CSV must have at least 1 column of count data.")
+                return
+
+            spec = np.zeros(MAX_CHANNELS, dtype=np.float32)
+            length = min(len(counts), MAX_CHANNELS)
+            spec[:length] = counts[:length]
+
+            self._frozen = True
+            import os as _os
+            self.lbl_cal_active.setText(f"[📂 {_os.path.basename(path)}]")
+            self.lbl_cal_active.setStyleSheet(
+                "color:#aaffaa; font-size:8pt; font-style:italic;"
+            )
+            self.btn_resume_live.setVisible(True)
+            self.btn_load_csv.setVisible(False)
+            self.btn_load_z1d.setVisible(False)
+            self._clear_peak_markers()
+            self._data = spec
+            self._frozen = False
+            self.update_spectrum(self._data)
+            self._frozen = True
+            self.plot.autoRange()
+        except Exception as e:
+            QMessageBox.critical(self, "Load Failed", f"Could not parse CSV:\n{e}")
+
 # ---------------------------------------------------------------------------
 # Phase 7.6: Calibration Dialog
 # ---------------------------------------------------------------------------
@@ -1234,6 +1559,37 @@ class CalibrationDialog(QDialog):
 
         sep = QFrame(); sep.setFrameShape(QFrame.HLine)
         sep.setStyleSheet("color:#222;"); root.addWidget(sep)
+
+        # ── Standard Sources Dropdown (Aryan branch)
+        src_row = QHBoxLayout()
+        src_row.addWidget(QLabel("Standard Source:"))
+        self.cmb_source = QComboBox()
+        sources = ["Custom"] + sorted(_iso_module.BUILTIN_LIBRARY.keys())
+        self.cmb_source.addItems(sources)
+        self.cmb_source.setStyleSheet(
+            "background:#1e1e1e; color:#ccc; border:1px solid #333; "
+            "border-radius:3px; padding:2px 6px;"
+        )
+        src_row.addWidget(self.cmb_source)
+
+        self.btn_load_src = self._small_btn("⬇ Load Energies", "#00d8ff", "#002b33")
+        self.btn_load_src.setToolTip(
+            "Populate the Energy column with the known gamma lines for the "
+            "selected source.  Then run Peak Search in the main window and use "
+            "Auto-Match to fill the Centroid column automatically."
+        )
+        self.btn_load_src.clicked.connect(self._load_standard_source)
+        src_row.addWidget(self.btn_load_src)
+
+        self.btn_auto_match = self._small_btn("⚡ Auto-Match Peaks", "#ffaa22", "#332200")
+        self.btn_auto_match.setToolTip(
+            "Match the highest peaks found by Peak Search to the loaded "
+            "isotope energies (by channel order). Run Peak Search first!"
+        )
+        self.btn_auto_match.clicked.connect(self._auto_match_peaks)
+        src_row.addWidget(self.btn_auto_match)
+        src_row.addStretch()
+        root.addLayout(src_row)
 
         # ── Calibration point table
         cal_grp = QGroupBox("Calibration Points")
@@ -1389,6 +1745,90 @@ class CalibrationDialog(QDialog):
         # No persistent state yet — dialog starts empty each time
         pass
 
+    # ── Standard source loading (Aryan branch) ────────────────────────────────
+    def _load_standard_source(self):
+        """Populate Energy column with known gamma lines for selected isotope."""
+        src = self.cmb_source.currentText()
+        if src == "Custom":
+            return
+        try:
+            lines = _iso_module.BUILTIN_LIBRARY.get(src, [])
+        except Exception:
+            QMessageBox.warning(self, "Library unavailable",
+                                "Isotope library not loaded.")
+            return
+        # Filter very weak lines if many lines are present
+        if len(lines) > 5:
+            lines = [L for L in lines if L[1] >= 4.0]
+        lines = sorted(lines, key=lambda x: x[0])   # sort by energy
+        for eng, inten in lines:
+            self._add_row("", f"{eng:.3f}")
+        self.cal_table.resizeColumnsToContents()
+
+    def _auto_match_peaks(self):
+        """
+        Match detected peaks to energy rows that have an empty Centroid cell.
+        Relies on the peak_table of the parent SpectrumPanel being populated
+        (i.e., the user has clicked 'Find Peaks' in the Spectrum tab first).
+        """
+        # Collect rows that have an energy but no centroid yet
+        empty_rows = []
+        for r in range(self.cal_table.rowCount()):
+            ch_item = self.cal_table.item(r, 0)
+            en_item = self.cal_table.item(r, 1)
+            if ch_item is not None and en_item is not None:
+                if not ch_item.text().strip() and en_item.text().strip():
+                    try:
+                        empty_rows.append((r, float(en_item.text())))
+                    except ValueError:
+                        pass
+
+        if not empty_rows:
+            QMessageBox.information(
+                self, "No Empty Energies",
+                "Load a Standard Source first, then use Auto-Match."
+            )
+            return
+
+        # Collect detected peaks from SpectrumPanel peak table
+        peaks = []
+        pt = self._sp.peak_table
+        for r in range(pt.rowCount()):
+            try:
+                ch_str     = pt.item(r, 0).text().split()[0]
+                counts_str = pt.item(r, 1).text().replace(',', '')
+                peaks.append((float(ch_str), float(counts_str)))
+            except (ValueError, AttributeError):
+                pass
+
+        if not peaks:
+            QMessageBox.information(
+                self, "No Peaks Found",
+                "Run Peak Search in the Spectrum tab first, "
+                "then come back to Auto-Match."
+            )
+            return
+
+        if len(peaks) < len(empty_rows):
+            QMessageBox.warning(
+                self, "Not Enough Peaks",
+                f"Found {len(peaks)} peak(s), but need {len(empty_rows)} "
+                f"to fill all empty rows. Matching what is available."
+            )
+
+        # Sort peaks by intensity (desc), take top N, then sort by channel (asc)
+        peaks.sort(key=lambda x: x[1], reverse=True)
+        top_peaks = sorted(peaks[:len(empty_rows)], key=lambda x: x[0])
+
+        # Sort empty rows by energy (asc) and assign in order
+        empty_rows.sort(key=lambda x: x[1])
+        for (row_idx, _), (centroid, _) in zip(empty_rows, top_peaks):
+            item = self.cal_table.item(row_idx, 0)
+            if item is None:
+                item = QTableWidgetItem()
+                self.cal_table.setItem(row_idx, 0, item)
+            item.setText(f"{centroid:.3f}")
+
     # ── Calibration fit ───────────────────────────────────────────────────────────────
     def _collect_points(self):
         """Read centroid + energy from table. Returns (channels, energies) arrays."""
@@ -1527,6 +1967,416 @@ class CalibrationDialog(QDialog):
 
 
 # ---------------------------------------------------------------------------
+# ZLS Replay Backend  (from Aryan branch)
+# ---------------------------------------------------------------------------
+class ZlsReplayBackend(QThread):
+    """Reads a .zls list-mode binary file and replays events into a 1D spectrum."""
+    def __init__(self, filepath, n_par=16, speed_mult=10.0):
+        super().__init__()
+        self.filepath    = filepath
+        self.n_par       = n_par
+        self.hdr_wds     = (n_par + 15) // 16
+        self.speed_mult  = speed_mult
+        import threading
+        self._lock       = threading.Lock()
+        self.N_CHAN      = MAX_CHANNELS
+        self._spectrum   = np.zeros(self.N_CHAN, dtype=np.uint32)
+        self._hist2d     = None
+        self._twod_conf  = None
+        self._pseudo_conf = []
+        self._events     = 0
+        self._tick       = 0
+        self._state      = "STOPPED"
+        self._run_name   = os.path.basename(filepath)
+        self._param_idx  = 0
+
+    def get_metrics(self):
+        with self._lock:
+            return {
+                'status':   "REPLAY" if self._state == "RUNNING" else self._state,
+                'run_name': self._run_name,
+                'elapsed':  self._tick * 0.1,
+                'total_ev': self._events,
+                'ev_rate':  0,
+                'bufs_acq': self._tick,
+                'bufs_proc': self._tick,
+                'cmd_rn':   self._run_name,
+            }
+
+    def get_spectrum(self, det=1):
+        with self._lock:
+            return self._spectrum.copy().astype(np.float32)
+
+    def get_twod(self):
+        with self._lock:
+            return self._hist2d.copy() if self._hist2d is not None else None
+
+    def start_replay(self, run_name=None):
+        if run_name:
+            self._run_name = run_name
+        self._state = "RUNNING"
+        self.start()
+
+    def stop(self):
+        self._state = "STOPPED"
+
+    def tick(self):
+        """No-op stub — ZlsReplayBackend drives itself via its own QThread."""
+        pass
+
+    def reset(self):
+        with self._lock:
+            self._spectrum[:] = 0
+            if self._hist2d is not None:
+                self._hist2d[:] = 0
+            self._events = 0
+            self._tick   = 0
+
+    @property
+    def is_running(self):
+        return self._state == "RUNNING"
+
+    def run(self):
+        try:
+            with open(self.filepath, 'rb') as f:
+                while self._state == "RUNNING":
+                    sign = f.read(4)
+                    if not sign:
+                        break
+                    if sign not in (b'DAPS', b'GSUP'):
+                        print("[Replay] Invalid ZLS signature:", sign)
+                        break
+                    cbuf_siz = np.frombuffer(f.read(4), dtype=np.uint32)[0]
+                    buf      = np.frombuffer(f.read(cbuf_siz), dtype=np.uint16)
+                    wrd_ptr  = 0
+                    wds_in_buf = cbuf_siz // 2
+                    batch_spec = np.zeros(self.N_CHAN, dtype=np.uint32)
+                    events_batch = 0
+                    while wrd_ptr < wds_in_buf:
+                        # Bounds-check: need at least hdr_wds words left
+                        if wds_in_buf - wrd_ptr < self.hdr_wds:
+                            break
+                        evt_hdr  = buf[wrd_ptr: wrd_ptr + self.hdr_wds]
+                        wrd_ptr += self.hdr_wds
+                        para     = np.zeros(self.n_par, dtype=np.uint32)
+                        for j in range(self.hdr_wds):
+                            if j >= len(evt_hdr):
+                                break
+                            mask = evt_hdr[j]
+                            for i in range(16):
+                                idx = i + 16 * j
+                                if idx >= self.n_par:
+                                    break
+                                if (mask >> i) & 1:
+                                    if wrd_ptr >= wds_in_buf:
+                                        break
+                                    para[idx]  = buf[wrd_ptr]
+                                    wrd_ptr   += 1
+                        if self._param_idx < len(para):
+                            val1d = para[self._param_idx]
+                            if 0 < val1d < self.N_CHAN:
+                                batch_spec[val1d] += 1
+                        events_batch += 1
+                    with self._lock:
+                        self._spectrum += batch_spec
+                        self._events   += events_batch
+                        self._tick     += 1
+                    time.sleep(0.01 / self.speed_mult)
+        except Exception as e:
+            print(f"[Replay] Error: {e}")
+        self._state = "STOPPED"
+
+
+# ---------------------------------------------------------------------------
+# 2D Scatter / Banana Gate Panel  (from Aryan branch)
+# ---------------------------------------------------------------------------
+class Scatter2DPanel(QGroupBox):
+    """2D E vs dE scatter plot with interactive banana gate drawing."""
+    def __init__(self, parent=None):
+        super().__init__("2D Scatter (E vs dE)")
+        self.setStyleSheet(
+            "QGroupBox { border:1px solid #252525; border-radius:6px; "
+            "margin-top:8px; font-size:9pt; color:#555; }"
+            "QGroupBox::title { subcontrol-origin:margin; left:10px; padding:0 4px; }"
+            "QPushButton { color:#aaa; background:#1a1a1a; border:1px solid #333; "
+            "border-radius:3px; padding:2px 8px; }"
+            "QPushButton:hover { background:#333; color:#fff; }"
+        )
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 15, 10, 10)
+        tools = QHBoxLayout()
+        self.btn_gate = QPushButton("🍌 Draw Banana Gate")
+        self.btn_gate.clicked.connect(self._start_draw_gate)
+        tools.addWidget(self.btn_gate)
+        self.btn_clear_gate = QPushButton("🗑 Clear Gates")
+        self.btn_clear_gate.clicked.connect(self._clear_gates)
+        tools.addWidget(self.btn_clear_gate)
+
+        # Load .z2d button
+        self.btn_load_z2d = QPushButton("📂 Load .z2d")
+        self.btn_load_z2d.clicked.connect(self._load_z2d_file)
+        self.btn_load_z2d.setStyleSheet(
+            "QPushButton{color:#ffaa44;background:#1a1000;border:1px solid #664400;"
+            "border-radius:3px;padding:2px 8px;}"
+            "QPushButton:hover{background:#2a1800;border-color:#ffaa44;}"
+        )
+        tools.addWidget(self.btn_load_z2d)
+
+        tools.addStretch()
+        self.lbl_gate_info = QLabel("")
+        self.lbl_gate_info.setStyleSheet("color:#ffcc00;")
+        tools.addWidget(self.lbl_gate_info)
+        layout.addLayout(tools)
+        self.plot_widget = pg.PlotWidget()
+        self.plot_widget.setLabel('bottom', 'X Parameter')
+        self.plot_widget.setLabel('left',   'Y Parameter')
+        self.img = pg.ImageItem()
+        self.plot_widget.addItem(self.img)
+        try:
+            cmap = pg.colormap.get('magma')
+            self.img.setLookupTable(cmap.getLookupTable())
+        except Exception:
+            pass
+        layout.addWidget(self.plot_widget)
+        self._gates = []
+
+    def update_2d(self, hist2d):
+        if hist2d is None:
+            return
+        log_hist = np.log1p(hist2d)
+        self.img.setImage(log_hist, autoLevels=False,
+                          levels=(0, log_hist.max() + 1))
+
+    def _start_draw_gate(self):
+        roi = pg.PolyLineROI(
+            [[100, 100], [200, 100], [200, 200], [100, 200]],
+            closed=True, pen=pg.mkPen('#ffcc00', width=2)
+        )
+        self.plot_widget.addItem(roi)
+        self._gates.append(roi)
+        self.btn_gate.setText("🍌 Add Another Gate")
+        roi.sigRegionChanged.connect(self._on_gate_changed)
+        self._on_gate_changed()
+
+    def _clear_gates(self):
+        for roi in self._gates:
+            self.plot_widget.removeItem(roi)
+        self._gates.clear()
+        self.btn_gate.setText("🍌 Draw Banana Gate")
+        self.lbl_gate_info.setText("")
+
+    def _on_gate_changed(self):
+        self.lbl_gate_info.setText(f"{len(self._gates)} gate(s) active.")
+
+    def _load_z2d_file(self):
+        """Open a file dialog and load a .z2d 2D spectrum."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load 2D Spectrum", "",
+            "LAMPS 2D Spectrum (*.z2d);;All files (*)"
+        )
+        if not path:
+            return
+        try:
+            hist2d, xs, ys = read_z2d(path)
+        except Exception as e:
+            QMessageBox.critical(self, "Load failed", str(e))
+            return
+        self.update_2d(hist2d)
+        import os as _os
+        self.lbl_gate_info.setText(
+            f"Loaded {_os.path.basename(path)}  ({xs}×{ys})"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Waterfall Panel — rolling time-evolution spectrogram  (from Aryan branch)
+# ---------------------------------------------------------------------------
+class WaterfallPanel(QGroupBox):
+    """
+    Rolling 2D spectrogram using pyqtgraph.ImageItem.
+    X = channel/energy, Y = time (0=oldest, top=newest).
+    """
+    HISTORY = 200
+
+    def __init__(self):
+        super().__init__("Waterfall (Time Evolution)")
+        self._n_chan    = MAX_CHANNELS
+        self._buf       = np.zeros((self.HISTORY, MAX_CHANNELS), dtype=np.float32)
+        self._write_idx = 0
+        self._cal_poly  = None
+        self._build()
+
+    def _build(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(4)
+        toolbar = QHBoxLayout()
+        toolbar.addWidget(QLabel("History rows:"))
+        self.spin_history = QSpinBox()
+        self.spin_history.setRange(50, 1000)
+        self.spin_history.setValue(self.HISTORY)
+        self.spin_history.setFixedWidth(70)
+        self.spin_history.setStyleSheet(
+            "background:#1e1e1e; color:#eee; border:1px solid #333;"
+            "border-radius:4px; padding:2px 4px;"
+        )
+        self.spin_history.valueChanged.connect(self._resize_history)
+        toolbar.addWidget(self.spin_history)
+        toolbar.addSpacing(12)
+        toolbar.addWidget(QLabel("Colour scale:"))
+        self.cmb_cmap = QComboBox()
+        self.cmb_cmap.setFixedWidth(100)
+        self.cmb_cmap.addItems(["inferno", "viridis", "plasma", "magma"])
+        self.cmb_cmap.currentTextChanged.connect(self._apply_cmap)
+        toolbar.addWidget(self.cmb_cmap)
+        toolbar.addSpacing(12)
+        self.btn_clear = QPushButton("Clear")
+        self.btn_clear.setFixedWidth(56)
+        self.btn_clear.setStyleSheet(
+            "QPushButton{color:#aaa;background:#1e1e1e;border:1px solid #333;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
+            "QPushButton:hover{background:#2a2a2a;}"
+        )
+        self.btn_clear.clicked.connect(self._clear)
+        toolbar.addWidget(self.btn_clear)
+        toolbar.addStretch()
+        layout.addLayout(toolbar)
+        self._pw  = pg.PlotWidget(background="#0a0a0a")
+        self._pw.setLabel("left",   "Time step (oldest → newest)")
+        self._pw.setLabel("bottom", "Channel")
+        self._pw.showGrid(x=True, y=True, alpha=0.15)
+        self._img = pg.ImageItem()
+        self._pw.addItem(self._img)
+        try:
+            self._cbar = pg.ColorBarItem(
+                values=(0, 1), colorMap="inferno", label="Counts"
+            )
+            self._cbar.setImageItem(self._img, insert_in=self._pw.getPlotItem())
+        except Exception:
+            self._cbar = None   # older pyqtgraph versions
+        layout.addWidget(self._pw, stretch=1)
+        self._apply_cmap("inferno")
+
+    def push(self, spectrum: np.ndarray):
+        """Add one spectrum row to the circular buffer and refresh."""
+        row = spectrum[:MAX_CHANNELS].astype(np.float32)
+        if len(row) < MAX_CHANNELS:
+            row = np.pad(row, (0, MAX_CHANNELS - len(row)))
+        self._buf[self._write_idx] = row
+        self._write_idx = (self._write_idx + 1) % len(self._buf)
+        self._refresh()
+
+    def set_calibration(self, cal_poly):
+        self._cal_poly = cal_poly
+        self._pw.setLabel("bottom", "Energy (keV)" if cal_poly else "Channel")
+
+    def _refresh(self):
+        ordered = np.roll(self._buf, -self._write_idx, axis=0)
+        safe    = np.where(ordered > 0, ordered, 0.1)
+        display = np.log10(safe).T
+        self._img.setImage(display, autoLevels=True)
+
+    def _resize_history(self, n):
+        new_buf  = np.zeros((n, MAX_CHANNELS), dtype=np.float32)
+        old_len  = len(self._buf)
+        if old_len <= n:
+            new_buf[:old_len] = self._buf
+        else:
+            ordered  = np.roll(self._buf, -self._write_idx, axis=0)
+            new_buf  = ordered[-n:]
+        self._buf       = new_buf
+        self._write_idx = 0
+
+    def _apply_cmap(self, name):
+        try:
+            self._img.setColorMap(name)
+            if self._cbar:
+                self._cbar.setColorMap(name)
+        except Exception:
+            pass
+
+    def _clear(self):
+        self._buf[:] = 0
+        self._write_idx = 0
+        self._refresh()
+
+
+# ---------------------------------------------------------------------------
+# Dead-Time Gauge  (from Aryan branch)
+# ---------------------------------------------------------------------------
+class DeadTimeGauge(QWidget):
+    """
+    Colour-coded bar showing DAQ dead time.
+    Green <5%, Yellow <20%, Orange <50%, Red ≥50%.
+    """
+    def __init__(self):
+        super().__init__()
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        lbl = QLabel("Dead Time:")
+        lbl.setStyleSheet("color:#888; font-size:9pt;")
+        lbl.setFixedWidth(80)
+        layout.addWidget(lbl)
+        self._bar = pg.PlotWidget(background="#111")
+        self._bar.setFixedHeight(22)
+        self._bar.setFixedWidth(160)
+        self._bar.setXRange(0, 100, padding=0)
+        self._bar.setYRange(0, 1,   padding=0)
+        self._bar.getPlotItem().hideAxis("left")
+        self._bar.getPlotItem().hideAxis("bottom")
+        self._fill = pg.BarGraphItem(x=[50], height=[1], width=[100],
+                                     brush="#1aff6e")
+        self._bar.addItem(self._fill)
+        layout.addWidget(self._bar)
+        self.lbl_pct = QLabel("—")
+        self.lbl_pct.setStyleSheet("color:#eee; font-size:9pt; font-weight:bold;")
+        self.lbl_pct.setFixedWidth(52)
+        layout.addWidget(self.lbl_pct)
+        self._pile_toggle = QCheckBox("Pile-up corr.")
+        self._pile_toggle.setStyleSheet("color:#888; font-size:8pt;")
+        layout.addWidget(self._pile_toggle)
+        self._shaping_us = QDoubleSpinBox()
+        self._shaping_us.setRange(0.1, 100.0)
+        self._shaping_us.setValue(2.0)
+        self._shaping_us.setSuffix(" µs")
+        self._shaping_us.setFixedWidth(72)
+        self._shaping_us.setToolTip("Shaping time constant for pile-up correction")
+        self._shaping_us.setStyleSheet(
+            "background:#1e1e1e; color:#eee; border:1px solid #333;"
+            "border-radius:3px; padding:1px 3px; font-size:8pt;"
+        )
+        layout.addWidget(self._shaping_us)
+        layout.addStretch()
+
+    def update_dead_time(self, bufs_acq, bufs_proc, ev_rate=None):
+        dt_pct = None
+        if bufs_acq is not None and bufs_proc is not None and bufs_acq > 0:
+            dt_pct = 100.0 * (bufs_acq - bufs_proc) / bufs_acq
+        if dt_pct is None:
+            self.lbl_pct.setText("—")
+            self._fill.setOpts(x=[50], width=[0])
+            return
+        colour = (
+            "#1aff6e" if dt_pct < 5  else
+            "#ffcc00" if dt_pct < 20 else
+            "#ff8800" if dt_pct < 50 else
+            "#ff3333"
+        )
+        self._fill.setOpts(x=[dt_pct / 2], width=[dt_pct], brush=colour)
+        self.lbl_pct.setText(f"{dt_pct:5.1f}%")
+        self.lbl_pct.setStyleSheet(
+            f"color:{colour}; font-size:9pt; font-weight:bold;"
+        )
+        if self._pile_toggle.isChecked() and ev_rate and ev_rate > 0:
+            tau_s = self._shaping_us.value() * 1e-6
+            corr  = ev_rate / max(1.0 - ev_rate * tau_s, 1e-6)
+            self.lbl_pct.setToolTip(
+                f"Pile-up corrected rate: {corr:,.0f} evt/s\n"
+                f"(shaping time = {self._shaping_us.value()} µs)"
+            )
+
+
+# ---------------------------------------------------------------------------
 # Main window — assembles all panels
 # ---------------------------------------------------------------------------
 class LampsDashboard(QMainWindow):
@@ -1595,12 +2445,46 @@ class LampsDashboard(QMainWindow):
         self.ctrl = ControlPanel(self._epics, sim=self._sim)
         self.ctrl.setFixedWidth(270)
         left.addWidget(self.ctrl)
+
+        # Dead-time gauge below control panel
+        self.dt_gauge = DeadTimeGauge()
+        self.dt_gauge.setFixedWidth(270)
+        left.addWidget(self.dt_gauge)
         left.addStretch()
         body.addLayout(left)
 
-        # Right column: spectrum panel (Phase 7.1 + 7.3)
+        # Right column: tab widget with Spectrum + Scatter2D + Waterfall + Setup
+        self._tabs = QTabWidget()
+        self._tabs.setStyleSheet(
+            "QTabWidget::pane { border:1px solid #252525; }"
+            "QTabBar::tab { background:#1a1a1a; color:#666; "
+            "  padding:5px 14px; border:1px solid #252525; "
+            "  border-bottom:none; border-radius:4px 4px 0 0; }"
+            "QTabBar::tab:selected { background:#252525; color:#ddd; }"
+            "QTabBar::tab:hover    { background:#1e1e1e; color:#aaa; }"
+        )
         self.spec_panel = SpectrumPanel(self._epics)
-        body.addWidget(self.spec_panel, stretch=1)
+        self._tabs.addTab(self.spec_panel,  "📊 Spectrum")
+
+        self.scatter2d_panel = Scatter2DPanel()
+        self._tabs.addTab(self.scatter2d_panel, "🔵 2D Scatter")
+
+        self.waterfall_panel = WaterfallPanel()
+        self._tabs.addTab(self.waterfall_panel, "🌊 Waterfall")
+
+        if CONFIG_EDITOR_AVAILABLE:
+            _setup_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "..", ".lamps_set"
+            )
+            try:
+                self.setup_panel = _config_editor.SetupPanel(
+                    os.path.normpath(_setup_path)
+                )
+                self._tabs.addTab(self.setup_panel, "⚙ Setup")
+            except Exception as _e:
+                print(f"[WARN] Setup tab failed to load: {_e}", file=sys.stderr)
+
+        body.addWidget(self._tabs, stretch=1)
         root.addLayout(body)
 
         # ── Bottom bar ───────────────────────────────────────────────────────
@@ -1656,6 +2540,9 @@ class LampsDashboard(QMainWindow):
         """Stop the poller thread cleanly before the window closes."""
         self._poller.stop_polling()
         self._poller.wait(2000)
+        if hasattr(self, '_replay_backend') and self._replay_backend is not None:
+            self._replay_backend.stop()
+            self._replay_backend.wait(1000)
         super().closeEvent(event)
 
     # ── Optimistic UI update — fired IMMEDIATELY on button click ────────────
@@ -1693,6 +2580,10 @@ class LampsDashboard(QMainWindow):
             self.ctrl.update_from_status("RUNNING")
             self.m_run_name.set(rn or "—")
 
+        elif cmd.startswith("REPLAY:"):
+            path = cmd[7:]
+            self._start_replay(path)
+
     # ── Refresh slots — called via pyqtSignal from EpicsPoller (GUI-thread safe)
     def _refresh_metrics(self, data: dict):
         status    = data.get('status',   '--')
@@ -1723,6 +2614,12 @@ class LampsDashboard(QMainWindow):
         self.m_bufs_acq.set(str(int(bufs_acq))         if bufs_acq  is not None else "—")
         self.m_bufs_proc.set(str(int(bufs_proc))       if bufs_proc is not None else "—")
 
+        # Update dead-time gauge
+        self.dt_gauge.update_dead_time(
+            bufs_acq, bufs_proc,
+            ev_rate=ev_rate
+        )
+
         self.lbl_ts.setText(f"Updated: {time.strftime('%H:%M:%S')}")
         is_run = (status == "RUNNING")
         if self._sim is not None:
@@ -1745,6 +2642,34 @@ class LampsDashboard(QMainWindow):
         # Keep poller's detector in sync with the combo box selection
         self._poller.set_detector(self.spec_panel.current_detector)
         self.spec_panel.update_spectrum(data)
+        # Feed waterfall rolling buffer
+        self.waterfall_panel.push(data)
+        # Keep waterfall calibration in sync
+        if hasattr(self.spec_panel, '_cal_poly'):
+            self.waterfall_panel.set_calibration(self.spec_panel._cal_poly)
+
+    def _start_replay(self, path: str):
+        """Launch a ZlsReplayBackend and switch poller to feed from it."""
+        if hasattr(self, '_replay_backend') and self._replay_backend is not None:
+            self._replay_backend.stop()
+            self._replay_backend.wait(1000)
+        self._replay_backend = ZlsReplayBackend(path, n_par=16, speed_mult=10.0)
+        # Swap the poller to use the replay backend as its sim
+        self._poller.stop_polling()
+        self._poller.wait(2000)
+        self._poller = EpicsPoller(
+            self._epics,
+            sim=self._replay_backend,
+            parent=self
+        )
+        self._poller.metrics_ready.connect(self._refresh_metrics)
+        self._poller.spectrum_ready.connect(self._refresh_spectrum)
+        self._poller.start()
+        self._replay_backend.start_replay()
+        self.status_badge.update("RUNNING")
+        self.ctrl.update_from_status("RUNNING")
+        self.ctrl._fb(f"Replaying: {os.path.basename(path)}", "#5588cc")
+        self._tabs.setCurrentWidget(self.spec_panel)
 
 
 # ---------------------------------------------------------------------------
