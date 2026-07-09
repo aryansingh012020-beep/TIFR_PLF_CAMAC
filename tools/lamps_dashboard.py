@@ -320,7 +320,7 @@ class ZlsReplayBackend(QThread):
                     buf = np.frombuffer(f.read(cbuf_siz), dtype=np.uint16)
                     
                     wrd_ptr = 0
-                    wds_in_buf = cbuf_siz // 2
+                    wds_in_buf = len(buf)
                     
                     batch_spec = np.zeros(self.N_CHAN, dtype=np.uint32)
                     events_batch = 0
@@ -510,7 +510,8 @@ class EpicsPoller(QThread):
                 # Advance simulator at ~5 Hz regardless of poll rate
                 self._sim_subtick = (self._sim_subtick + 1) % max(1, 1000 // (SimulatedBackend.SIM_HZ * REFRESH_MS))
                 if self._sim_subtick == 0:
-                    self._sim.tick()
+                    if hasattr(self._sim, 'tick'):
+                        self._sim.tick()
 
                 metrics = self._sim.get_metrics()
                 self.metrics_ready.emit(metrics)
