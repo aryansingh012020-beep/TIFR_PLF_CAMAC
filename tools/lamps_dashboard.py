@@ -649,8 +649,23 @@ class _BackendLaunchWorker(QThread):
                              stderr=subprocess.DEVNULL)
             time.sleep(3)
 
-            # Step 2: CAMAC kernel driver (needs root via pkexec)
-            self.step_update.emit("[2/4] Loading CAMAC driver (pkexec ldcmc100)…", "#ffcc44")
+            # Step 2: EPICS IOC
+            self.step_update.emit("[2/4] Starting EPICS IOC (src/run_ioc.sh)…", "#aaa")
+            subprocess.Popen(["./run_ioc.sh"],
+                             cwd=os.path.join(self._src_dir, "src"),
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+            time.sleep(2)
+
+            # Step 3: EPICS Bridge
+            self.step_update.emit("[3/4] Starting EPICS Bridge (run_bridge.sh)…", "#aaa")
+            subprocess.Popen(["./run_bridge.sh"],
+                             cwd=self._src_dir,
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+
+            # Step 4: CAMAC kernel driver (needs root via pkexec)
+            self.step_update.emit("[4/4] Loading CAMAC driver (pkexec ldcmc100)…", "#ffcc44")
             p_drv = subprocess.Popen(
                 ["pkexec", os.path.join(self._src_dir, "ldcmc100")],
                 cwd=self._src_dir,
@@ -665,21 +680,6 @@ class _BackendLaunchWorker(QThread):
             if p_drv.returncode != 0:
                 self.finished_launch.emit(False, f"Driver failed: {err.strip()[:120]}")
                 return
-
-            # Step 3: EPICS IOC
-            self.step_update.emit("[3/4] Starting EPICS IOC (src/run_ioc.sh)…", "#aaa")
-            subprocess.Popen(["./run_ioc.sh"],
-                             cwd=os.path.join(self._src_dir, "src"),
-                             stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL)
-            time.sleep(2)
-
-            # Step 4: EPICS Bridge
-            self.step_update.emit("[4/4] Starting EPICS Bridge (run_bridge.sh)…", "#aaa")
-            subprocess.Popen(["./run_bridge.sh"],
-                             cwd=self._src_dir,
-                             stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL)
 
             self.finished_launch.emit(True, "✓ Backend stack running")
         except FileNotFoundError as e:
