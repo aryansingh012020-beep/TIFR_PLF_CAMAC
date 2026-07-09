@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-lamps_dashboard.py — LAMPS Live Monitoring & Control Dashboard
+lamps_dashboard.py ΓÇö LAMPS Live Monitoring & Control Dashboard
 
 Phase 7.1: Live monitoring (status, metrics, spectrum)
 Phase 7.2: Run control (START / STOP / RESET, run name entry)
@@ -11,9 +11,9 @@ Phase 7.6: Calibration (energy assignment, polynomial fit, keV axis, save/load)
 
 Sim mode: Add --sim flag (or auto-detected when EPICS IOC unreachable).
   Generates the same realistic Gaussian spectrum as sim_shm.c:
-    Peak A — Co-60  (1173 keV) at ch 512,  FWHM ~20 ch
-    Peak B — Cs-137 (662  keV) at ch 1024, FWHM ~15 ch
-    Peak C — K-40   (1461 keV) at ch 2048, FWHM ~25 ch
+    Peak A ΓÇö Co-60  (1173 keV) at ch 512,  FWHM ~20 ch
+    Peak B ΓÇö Cs-137 (662  keV) at ch 1024, FWHM ~15 ch
+    Peak C ΓÇö K-40   (1461 keV) at ch 2048, FWHM ~25 ch
     + Compton continuum + flat noise floor
   START / STOP / RESET all work in sim mode.
 
@@ -26,6 +26,7 @@ Usage:
 
 import sys
 import argparse
+import os
 import time
 import numpy as np
 
@@ -35,20 +36,25 @@ from PyQt5.QtWidgets import (
     QCheckBox, QSizePolicy, QDoubleSpinBox, QSpinBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QSplitter,
     QDialog, QDialogButtonBox, QRadioButton, QButtonGroup,
-    QFileDialog, QMessageBox
+    QFileDialog, QMessageBox, QTabWidget
 )
 from PyQt5.QtCore import QTimer, Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QColor
 
 import pyqtgraph as pg
 
-try:
-    from scipy.signal import find_peaks
-    from scipy.optimize import curve_fit
-    SCIPY_AVAILABLE = True
-except ImportError:
-    SCIPY_AVAILABLE = False
-    print("[WARN] scipy not found — peak search/fitting disabled", file=sys.stderr)
+import analysis.background as bg_module
+import analysis.peaksearch as peak_module
+import analysis.fitting as fit_module
+import analysis.calibration as cal_module
+import analysis.isotopeid as iso_module
+import analysis.efficiency as eff_module
+import analysis.export as exp_module
+import config_editor
+
+# Load isotope library from JSON if present, else fallback
+ISOTOPE_LIBRARY = iso_module.load_library()
+SCIPY_AVAILABLE = True  # handled gracefully inside analysis modules
 
 # To allow remote connections, EPICS_CA_ADDR_LIST must be set BEFORE pyepics is imported.
 import os
@@ -88,6 +94,14 @@ STATUS_COLORS = {
     "--":       ("#555555", "#111111"),
 }
 
+ISOTOPE_LIBRARY = {
+    "Co-60": [1173.2, 1332.5],
+    "Cs-137": [661.7],
+    "K-40": [1460.8],
+    "Na-22": [511.0, 1274.5],
+    "Am-241": [59.5],
+}
+
 
 # ---------------------------------------------------------------------------
 # Simulated Data Backend
@@ -113,7 +127,7 @@ class SimulatedBackend:
         self._run_name    = ""
         self._start_tick  = 0
 
-    # ── Simple XOR-shift PRNG (same as sim_shm.c) ────────────────────────────
+    # ΓöÇΓöÇ Simple XOR-shift PRNG (same as sim_shm.c) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def _rng_uniform(self):
         x = self._rng_state & 0xFFFFFFFFFFFFFFFF
         x ^= (x << 13) & 0xFFFFFFFFFFFFFFFF
@@ -123,7 +137,7 @@ class SimulatedBackend:
         return (x & 0xFFFFFFFF) / 4294967296.0
 
     def _poisson(self, lam):
-        """Poisson variate — Normal approx for lam > 30."""
+        """Poisson variate ΓÇö Normal approx for lam > 30."""
         if lam <= 0.0:
             return 0
         if lam > 30.0:
@@ -144,11 +158,11 @@ class SimulatedBackend:
 
     @staticmethod
     def _gauss(ch_arr, mu, fwhm, amplitude):
-        """Gaussian shape — vectorised over ch_arr."""
+        """Gaussian shape ΓÇö vectorised over ch_arr."""
         sigma = fwhm / 2.3548
         return amplitude * np.exp(-0.5 * ((ch_arr - mu) / sigma) ** 2)
 
-    # ── Called once per SIM_HZ tick from the poller thread ──────────────────
+    # ΓöÇΓöÇ Called once per SIM_HZ tick from the poller thread ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def tick(self):
         with self._lock:
             if self._state != "RUNNING":
@@ -161,7 +175,7 @@ class SimulatedBackend:
             rate += 0.5 * np.exp(-ch / 1200.0)          # Compton
             rate += 0.05                                 # noise floor
 
-            # Vectorised Poisson draws — same physics as sim_shm.c, 1000× faster
+            # Vectorised Poisson draws ΓÇö same physics as sim_shm.c, 1000├ù faster
             counts = np.random.poisson(rate).astype(np.uint32)
             self._spectrum += counts
             new_evts = int(counts.sum())
@@ -169,7 +183,7 @@ class SimulatedBackend:
             self._events += new_evts
             self._tick   += 1
 
-    # ── Snapshot API (called from poller, safe under lock) ──────────────────
+    # ΓöÇΓöÇ Snapshot API (called from poller, safe under lock) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def get_metrics(self):
         with self._lock:
             if self._state == "RUNNING":
@@ -194,7 +208,7 @@ class SimulatedBackend:
         with self._lock:
             return self._spectrum.copy().astype(np.float32)
 
-    # ── Control API ──────────────────────────────────────────────────────────
+    # ΓöÇΓöÇ Control API ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def start(self, run_name):
         with self._lock:
             self._run_name   = run_name or "SIM_RUN"
@@ -227,13 +241,169 @@ class SimulatedBackend:
 
 
 # ---------------------------------------------------------------------------
+# ZLS Replay Backend
+# ---------------------------------------------------------------------------
+class ZlsReplayBackend(QThread):
+    def __init__(self, filepath, n_par=16, speed_mult=1.0):
+        super().__init__()
+        self.filepath = filepath
+        self.n_par = n_par
+        self.hdr_wds = (n_par + 15) // 16
+        self.speed_mult = speed_mult
+        
+        import threading
+        self._lock = threading.Lock()
+        self.N_CHAN = 8192
+        self._spectrum = np.zeros(self.N_CHAN, dtype=np.uint32)
+        
+        self._hist2d = None
+        self._twod_conf = None
+        self._pseudo_conf = []
+        
+        self._events = 0
+        self._tick = 0
+        self._state = "STOPPED"
+        self._run_name = os.path.basename(filepath)
+        self._param_idx = 0 # which param to plot in 1D
+
+    def set_config(self, twod_conf=None, pseudo_conf=None, param_idx=0):
+        with self._lock:
+            self._param_idx = param_idx
+            if pseudo_conf is not None:
+                self._pseudo_conf = pseudo_conf
+            if twod_conf is not None:
+                self._twod_conf = twod_conf
+                self._hist2d = np.zeros((twod_conf['xsz'], twod_conf['ysz']), dtype=np.uint32)
+
+    def get_metrics(self):
+        with self._lock:
+            return {
+                'status': "REPLAY" if self._state == "RUNNING" else self._state,
+                'run_name': self._run_name,
+                'elapsed': self._tick * 0.1,
+                'total_ev': self._events,
+                'ev_rate': 0,
+                'bufs_acq': self._tick,
+                'bufs_proc': self._tick,
+                'cmd_rn': self._run_name,
+            }
+
+    def get_spectrum(self, det=1):
+        with self._lock:
+            return self._spectrum.copy().astype(np.float32)
+            
+    def get_twod(self):
+        with self._lock:
+            if self._hist2d is not None:
+                return self._hist2d.copy()
+            return None
+
+    def start_replay(self, run_name=None):
+        if run_name: self._run_name = run_name
+        self._state = "RUNNING"
+        self.start()
+
+    def stop(self):
+        self._state = "STOPPED"
+
+    def reset(self):
+        with self._lock:
+            self._spectrum[:] = 0
+            if self._hist2d is not None:
+                self._hist2d[:] = 0
+            self._events = 0
+            self._tick = 0
+
+    @property
+    def is_running(self):
+        return self._state == "RUNNING"
+
+    def run(self):
+        try:
+            with open(self.filepath, 'rb') as f:
+                while self._state == "RUNNING":
+                    sign = f.read(4)
+                    if not sign: break
+                    if sign not in (b'DAPS', b'GSUP'):
+                        print("[Replay] Invalid ZLS signature:", sign)
+                        break
+                        
+                    cbuf_siz = np.frombuffer(f.read(4), dtype=np.uint32)[0]
+                    buf = np.frombuffer(f.read(cbuf_siz), dtype=np.uint16)
+                    
+                    wrd_ptr = 0
+                    wds_in_buf = len(buf)
+                    
+                    batch_spec = np.zeros(self.N_CHAN, dtype=np.uint32)
+                    events_batch = 0
+                    
+                    while wrd_ptr < wds_in_buf:
+                        if wds_in_buf - wrd_ptr < self.hdr_wds: break
+                        
+                        evt_hdr = buf[wrd_ptr : wrd_ptr + self.hdr_wds]
+                        wrd_ptr += self.hdr_wds
+                        
+                        para = np.zeros(self.n_par + len(self._pseudo_conf), dtype=np.uint32)
+                        
+                        for j in range(self.hdr_wds):
+                            mask = evt_hdr[j]
+                            for i in range(16):
+                                idx = i + 16*j
+                                if idx >= self.n_par: break
+                                if (mask >> i) & 1:
+                                    if wrd_ptr < wds_in_buf:
+                                        para[idx] = buf[wrd_ptr]
+                                        wrd_ptr += 1
+                        
+                        # Pseudo
+                        p_idx = self.n_par
+                        for p in self._pseudo_conf:
+                            v1 = para[p['p1']-1] if p['p1'] > 0 else 0
+                            v2 = para[p['p2']-1] if p['p2'] > 0 else 0
+                            val = 0
+                            if p['mode'] == 0: val = v1 + v2
+                            elif p['mode'] == 1: val = v1 * v2
+                            elif p['mode'] == 2: val = int((v1 / v2) * p['const']) if v2 > 0 else 0
+                            para[p_idx] = val
+                            p_idx += 1
+                        
+                        # 1D Spectrum
+                        if self._param_idx < len(para):
+                            val1d = para[self._param_idx]
+                            if 0 < val1d < self.N_CHAN:
+                                batch_spec[val1d] += 1
+                                
+                        # 2D Spectrum
+                        if self._twod_conf is not None:
+                            x_idx = self._twod_conf['xpr'] - 1
+                            y_idx = self._twod_conf['ypr'] - 1
+                            if x_idx < len(para) and y_idx < len(para):
+                                vx = para[x_idx]
+                                vy = para[y_idx]
+                                if 0 < vx < self._twod_conf['xsz'] and 0 < vy < self._twod_conf['ysz']:
+                                    self._hist2d[vx, vy] += 1
+                                    
+                        events_batch += 1
+                        
+                    with self._lock:
+                        self._spectrum += batch_spec
+                        self._events += events_batch
+                        self._tick += 1
+                    
+                    time.sleep(0.01 / self.speed_mult) # yield
+                    
+        except Exception as e:
+            print(f"[Replay] Error: {e}")
+        self._state = "STOPPED"
+
+# ---------------------------------------------------------------------------
 # EPICS proxy
 # ---------------------------------------------------------------------------
 class EpicsProxy:
     def __init__(self, prefix: str, ioc: str):
         self.prefix = prefix
         self.ioc    = ioc
-        self._pv_cache: dict = {}   # suffix → epics.PV object
+        self._pv_cache: dict = {}   # suffix ΓåÆ epics.PV object
         if EPICS_AVAILABLE:
             import os
             # YES = use local broadcast so softIoc is found automatically
@@ -322,17 +492,18 @@ class EpicsProxy:
 # ---------------------------------------------------------------------------
 class EpicsPoller(QThread):
     """
-    Polls either the EPICS proxy or the SimulatedBackend — never on the GUI
+    Polls either the EPICS proxy or the SimulatedBackend ΓÇö never on the GUI
     thread.  Emits signals that Qt delivers safely across threads.
     """
     metrics_ready  = pyqtSignal(dict)       # fired every REFRESH_MS
     spectrum_ready = pyqtSignal(object)     # fired every SPEC_REFRESH_MS
+    twod_ready     = pyqtSignal(object)     # fired for 2D histograms
 
     def __init__(self, proxy: 'EpicsProxy', sim: 'SimulatedBackend | None' = None,
                  parent=None):
         super().__init__(parent)
         self._proxy      = proxy
-        self._sim        = sim            # None → use EPICS
+        self._sim        = sim            # None ΓåÆ use EPICS
         self._running    = True
         self._det        = 1
         self._tick       = 0
@@ -344,18 +515,19 @@ class EpicsPoller(QThread):
     def stop_polling(self):
         self._running = False
 
-    # ── Sim-mode ticker: advance simulation by one tick every SIM_HZ interval
+    # ΓöÇΓöÇ Sim-mode ticker: advance simulation by one tick every SIM_HZ interval
     _sim_subtick   = 0
     _sim_hz_ratio  = max(1, 1000 // (SimulatedBackend.SIM_HZ * REFRESH_MS))  # ticks between sim advances
 
     def run(self):
         while self._running:
             if self._sim is not None:
-                # ── Simulated backend ──────────────────────────────────────
+                # ΓöÇΓöÇ Simulated backend ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
                 # Advance simulator at ~5 Hz regardless of poll rate
                 self._sim_subtick = (self._sim_subtick + 1) % max(1, 1000 // (SimulatedBackend.SIM_HZ * REFRESH_MS))
                 if self._sim_subtick == 0:
-                    self._sim.tick()
+                    if hasattr(self._sim, 'tick'):
+                        self._sim.tick()
 
                 metrics = self._sim.get_metrics()
                 self.metrics_ready.emit(metrics)
@@ -364,9 +536,13 @@ class EpicsPoller(QThread):
                 if self._tick == 0:
                     arr = self._sim.get_spectrum(self._det)
                     self.spectrum_ready.emit(arr)
+                    if hasattr(self._sim, 'get_twod'):
+                        twod = self._sim.get_twod()
+                        if twod is not None:
+                            self.twod_ready.emit(twod)
 
             else:
-                # ── Live EPICS backend ─────────────────────────────────────
+                # ΓöÇΓöÇ Live EPICS backend ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
                 p = self._proxy
                 metrics = {
                     'status':    (p.get('STATUS',       as_string=True, default='--') or '--').strip(),
@@ -402,9 +578,12 @@ class StatusBadge(QLabel):
         fg, bg = STATUS_COLORS.get(s, STATUS_COLORS["--"])
         self.setStyleSheet(f"color:{fg}; background:{bg}; border-radius:6px; padding:4px 16px;")
 
-    def update(self, status: str):       # noqa: A003
+    def set_status(self, status: str):
         self.setText(f"  {status}  ")
         self._apply(status)
+    
+    def update(self, status: str):       # noqa: A003
+        self.set_status(status)
 
 
 class MetricRow(QWidget):
@@ -416,7 +595,7 @@ class MetricRow(QWidget):
         lbl.setFixedWidth(140)
         lbl.setStyleSheet("color:#888; font-size:9pt;")
         row.addWidget(lbl)
-        self.val = QLabel("—")
+        self.val = QLabel("ΓÇö")
         self.val.setFont(QFont("Monospace", 10, QFont.Bold))
         self.val.setStyleSheet("color:#eee;")
         row.addWidget(self.val)
@@ -429,16 +608,35 @@ class MetricRow(QWidget):
 # ---------------------------------------------------------------------------
 # Phase 7.2: Control Panel
 # ---------------------------------------------------------------------------
+class _EpicsPutWorker(QThread):
+    """Fire-and-forget: run caput on a background thread so the GUI never stalls."""
+    done = pyqtSignal(str, bool)   # (label, success)
+
+    def __init__(self, epics_proxy, suffix, value, label):
+        super().__init__()
+        self._proxy = epics_proxy
+        self._suffix = suffix
+        self._value  = value
+        self._label  = label
+
+    def run(self):
+        ok = self._proxy.put(self._suffix, self._value)
+        self.done.emit(self._label, ok)
+
+
 class ControlPanel(QGroupBox):
     """
     Run control panel: START / STOP / RESET buttons.
 
-    Emits ``command_issued(str)`` immediately when a button is clicked so
-    the main window can apply an *optimistic UI update* before the EPICS
-    round-trip confirms the state change.  Payload values: "START", "STOP",
-    "RESET".
+    Fixed issues vs. original:
+      1. caput runs in a background QThread ΓÇö GUI thread never blocks.
+      2. 500 ms debounce prevents rapid double-fire.
+      3. command_lockout_ms (2500 ms) ΓÇö after a command the panel ignores
+         poller status overrides while the IOC processes the request.
     """
-    command_issued = pyqtSignal(str)   # "START" | "STOP" | "RESET"
+    command_issued   = pyqtSignal(str)   # "START" | "STOP" | "RESET"
+    DEBOUNCE_MS      = 500
+    LOCKOUT_MS       = 2500   # suppress poller overrides after a command
 
     def __init__(self, epics_proxy: EpicsProxy,
                  sim: 'SimulatedBackend | None' = None):
@@ -446,6 +644,10 @@ class ControlPanel(QGroupBox):
         self._epics = epics_proxy
         self._sim   = sim
         self._prefilled = False
+        self._workers   = []    # keep worker references alive
+        self._debounce_timer = QTimer(self)
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.setInterval(self.DEBOUNCE_MS)
         self._build()
 
     def _build(self):
@@ -468,13 +670,17 @@ class ControlPanel(QGroupBox):
         layout.addLayout(rn_row)
 
         btn_row = QHBoxLayout(); btn_row.setSpacing(8)
-        self.btn_start = self._btn("▶  START",  "#00aa44", "#003318")
-        self.btn_stop  = self._btn("■  STOP",   "#cc3300", "#330d00")
-        self.btn_reset = self._btn("↺  RESET",  "#aa6600", "#2a1800")
+        self.btn_start = self._btn("START",  "#00aa44", "#003318")
+        self.btn_stop  = self._btn("STOP",   "#cc3300", "#330d00")
+        self.btn_reset = self._btn("RESET",  "#aa6600", "#2a1800")
+        self.btn_load_driver = self._btn("LAUNCH BACKEND", "#00d8ff", "#002b33")
+        self.btn_replay = self._btn("≡ƒôé REPLAY .zls", "#5588cc", "#001122")
         self.btn_start.clicked.connect(self._do_start)
         self.btn_stop.clicked.connect(self._do_stop)
         self.btn_reset.clicked.connect(self._do_reset)
-        for b in [self.btn_start, self.btn_stop, self.btn_reset]:
+        self.btn_load_driver.clicked.connect(self._do_load_driver)
+        self.btn_replay.clicked.connect(self._do_replay)
+        for b in [self.btn_start, self.btn_stop, self.btn_reset, self.btn_load_driver, self.btn_replay]:
             btn_row.addWidget(b)
         layout.addLayout(btn_row)
 
@@ -507,41 +713,131 @@ class ControlPanel(QGroupBox):
             self.run_name_edit.setText(name.strip())
             self._prefilled = True
 
+    # ΓöÇΓöÇ Command handlers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def _do_start(self):
+        if self._debounce_timer.isActive():
+            return
+        self._debounce_timer.start()
         rn = self.run_name_edit.text().strip()
         if not rn:
-            self._fb("⚠  Enter a run name first", "#ffcc00"); return
-        self._fb("Sending START…", "#aaa")
+            self._fb("Enter a run name first", "#ffcc00"); return
+        # Immediately disable both buttons to prevent double-fire
+        self.btn_start.setEnabled(False)
+        self.btn_stop.setEnabled(False)
+        self._fb("Sending START...", "#aaa")
         if self._sim is not None:
             self._sim.start(rn)
-            self._fb(f"✓ [SIM] STARTED  ({rn})", "#1aff6e")
+            self._fb(f"[SIM] STARTED  ({rn})", "#1aff6e")
+            self.command_issued.emit("START")
         else:
-            ok = self._epics.put("CMD:RUN_NAME", rn) and self._epics.put("CMD:START", 1)
-            self._fb(f"✓ START  ({rn})" if ok else "✗ caput failed", "#1aff6e" if ok else "#ff4444")
-        # Optimistic: notify main window immediately regardless of EPICS round-trip
-        self.command_issued.emit("START")
+            # Non-blocking: send RUN_NAME first, then START on worker thread
+            self._epics.put("CMD:RUN_NAME", rn)   # usually fast string put
+            w = _EpicsPutWorker(self._epics, "CMD:START", 1, f"START ({rn})")
+            w.done.connect(self._on_put_done)
+            self._workers.append(w)
+            w.start()
+            self.command_issued.emit("START")
 
     def _do_stop(self):
-        self._fb("Sending STOP…", "#aaa")
+        if self._debounce_timer.isActive():
+            return
+        self._debounce_timer.start()
+        self.btn_start.setEnabled(False)
+        self.btn_stop.setEnabled(False)
+        self._fb("Sending STOP...", "#aaa")
         if self._sim is not None:
             self._sim.stop()
-            self._fb("✓ [SIM] STOPPED", "#ffcc00")
+            self._fb("[SIM] STOPPED", "#ffcc00")
+            self.command_issued.emit("STOP")
         else:
-            ok = self._epics.put("CMD:STOP", 1)
-            self._fb("✓ STOP sent" if ok else "✗ caput failed", "#ffcc00" if ok else "#ff4444")
-        # Optimistic: notify main window immediately
-        self.command_issued.emit("STOP")
+            w = _EpicsPutWorker(self._epics, "CMD:STOP", 1, "STOP")
+            w.done.connect(self._on_put_done)
+            self._workers.append(w)
+            w.start()
+            self.command_issued.emit("STOP")
 
     def _do_reset(self):
-        self._fb("Sending RESET…", "#aaa")
+        if self._debounce_timer.isActive():
+            return
+        self._debounce_timer.start()
+        self.btn_start.setEnabled(False)
+        self.btn_stop.setEnabled(False)
+        self._fb("Sending RESET...", "#aaa")
         if self._sim is not None:
             self._sim.reset()
-            self._fb("✓ [SIM] RESET", "#ff8800")
+            self._fb("[SIM] RESET", "#ff8800")
+            self.command_issued.emit("RESET")
         else:
-            ok = self._epics.put("CMD:RESET", 1)
-            self._fb("✓ RESET sent" if ok else "✗ caput failed", "#ff8800" if ok else "#ff4444")
-        # Optimistic: notify main window immediately
-        self.command_issued.emit("RESET")
+            w = _EpicsPutWorker(self._epics, "CMD:RESET", 1, "RESET")
+            w.done.connect(self._on_put_done)
+            self._workers.append(w)
+            w.start()
+            self.command_issued.emit("RESET")
+
+    def _do_load_driver(self):
+        if self._debounce_timer.isActive():
+            return
+        self._debounce_timer.start()
+        
+        if sys.platform == "win32":
+            QMessageBox.information(self, "Load Driver", "LAMPS now uses WinUSB via libusb on Windows.\nThere is no kernel driver to load natively.")
+            self._fb("Windows driverless mode active", "#00d8ff")
+            return
+            
+        self._fb("Launching Backend Stack...", "#aaa")
+        
+        def _run_loader():
+            import subprocess
+            import time
+            try:
+                # 1. Start LAMPS (DAQ server & GUI)
+                QTimer.singleShot(0, lambda: self._fb("Starting LAMPS Backend...", "#aaa"))
+                subprocess.Popen(["./lamps"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                # Wait for LAMPS GTK window to initialize shared memory
+                time.sleep(3)
+
+                # 2. Load the driver
+                QTimer.singleShot(0, lambda: self._fb("Loading driver (pkexec)...", "#aaa"))
+                p_drv = subprocess.Popen(["pkexec", "./ldcmc100"], 
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                out, err = p_drv.communicate(timeout=20)
+                if p_drv.returncode != 0:
+                    QTimer.singleShot(0, lambda: self._fb(f"Driver load failed: {err.strip()}", "#ff4444"))
+                    return
+
+                # 3. Start IOC
+                QTimer.singleShot(0, lambda: self._fb("Starting EPICS IOC...", "#aaa"))
+                subprocess.Popen(["./run_ioc.sh"], cwd="src", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                time.sleep(2)
+                
+                # 4. Start EPICS Bridge
+                QTimer.singleShot(0, lambda: self._fb("Starting EPICS Bridge...", "#aaa"))
+                subprocess.Popen(["./run_bridge.sh"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                QTimer.singleShot(0, lambda: self._fb("Backend Stack Started!", "#1aff6e"))
+            except Exception as e:
+                QTimer.singleShot(0, lambda: self._fb(f"Launch Error: {e}", "#ff4444"))
+
+        import threading
+        t = threading.Thread(target=_run_loader, daemon=True)
+        t.start()
+
+    def _on_put_done(self, label: str, ok: bool):
+        # Clean up finished worker references
+        self._workers = [w for w in self._workers if w.isRunning()]
+        if ok:
+            self._fb(f"Sent: {label}", "#1aff6e")
+        else:
+            self._fb(f"FAILED: {label}", "#ff4444")
+            # Re-enable buttons on failure so operator can retry
+            self.btn_start.setEnabled(True)
+            self.btn_stop.setEnabled(True)
+
+    def _do_replay(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Select ZLS file", "", "List Mode files (*.zls);;All files (*)")
+        if path:
+            self.command_issued.emit(f"REPLAY:{path}")
 
     def _fb(self, msg, color):
         self.lbl_fb.setText(msg)
@@ -555,11 +851,11 @@ class ControlPanel(QGroupBox):
 class SpectrumPanel(QGroupBox):
     """
     Live spectrum view with tools:
-      Phase 7.1 — PyQtGraph PlotWidget, detector selector
-      Phase 7.3 — LinearRegionItem ROI, crosshair, log/lin, auto-range
-      Phase 7.4 — Peak search (scipy.signal.find_peaks), markers, peak table
-      Phase 7.5 — Gaussian fitting (scipy.optimize.curve_fit), fit overlay
-      Phase 7.6 — Calibration dialog (polynomial fit, keV axis, save/load)
+      Phase 7.1 ΓÇö PyQtGraph PlotWidget, detector selector
+      Phase 7.3 ΓÇö LinearRegionItem ROI, crosshair, log/lin, auto-range
+      Phase 7.4 ΓÇö Peak search (scipy.signal.find_peaks), markers, peak table
+      Phase 7.5 ΓÇö Gaussian fitting (scipy.optimize.curve_fit), fit overlay
+      Phase 7.6 ΓÇö Calibration dialog (polynomial fit, keV axis, save/load)
     """
     def __init__(self, epics_proxy: EpicsProxy):
         super().__init__("Live Spectrum")
@@ -570,25 +866,23 @@ class SpectrumPanel(QGroupBox):
         self._peak_lines = []   # Phase 7.4: vertical marker InfiniteLines
         self._fit_curves = []   # Phase 7.5: Gaussian fit PlotDataItems
         self._cal_poly   = None # Phase 7.6: np.poly1d object when calibrated
+        self._offline_mode = False
         self._build()
 
-    # ── Build ───────────────────────────────────────────────────────────────
+    # ΓöÇΓöÇ Build ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def _build(self):
         layout = QVBoxLayout(self)
         layout.setSpacing(6)
 
-        # ── Toolbar row 1: detector + scale + autorange ─────────────────
+        # ΓöÇΓöÇ Toolbar row 1: detector + scale + autorange ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         row1 = QHBoxLayout()
 
         row1.addWidget(QLabel("Detector:"))
         self.det_combo = QComboBox()
         self.det_combo.setFixedWidth(130)
-        self.det_combo.setStyleSheet("font-weight:bold; color:#ccc; background:#222;")
-        for i in range(MAX_DETECTORS):
-            # 1-based indexing for EPICS PV names (SPEC1D:001 to 008)
-            self.det_combo.addItem(f"SPEC1D:{i+1:03d}", i+1)
+        for i in range(1, MAX_DETECTORS + 1):
+            self.det_combo.addItem(f"SPEC1D:{i:03d}", i)
         self.det_combo.currentIndexChanged.connect(self._on_det_changed)
-        self._current_det = 1
         row1.addWidget(self.det_combo)
         row1.addSpacing(16)
 
@@ -603,7 +897,7 @@ class SpectrumPanel(QGroupBox):
         self.btn_log.toggled.connect(self._toggle_log)
         row1.addWidget(self.btn_log)
 
-        self.btn_auto = QPushButton("⊡ Auto")
+        self.btn_auto = QPushButton("Γèí Auto")
         self.btn_auto.setFixedWidth(64)
         self.btn_auto.setStyleSheet(
             "QPushButton{color:#aaa;background:#1e1e1e;border:1px solid #333;"
@@ -614,7 +908,7 @@ class SpectrumPanel(QGroupBox):
         row1.addWidget(self.btn_auto)
 
         # Phase 7.6: Calibration button
-        self.btn_cal = QPushButton("📐 Calibrate")
+        self.btn_cal = QPushButton("≡ƒôÉ Calibrate")
         self.btn_cal.setFixedWidth(90)
         self.btn_cal.setStyleSheet(
             "QPushButton{color:#bb88ff;background:#1a0d2a;border:1px solid #553388;"
@@ -630,21 +924,76 @@ class SpectrumPanel(QGroupBox):
             "color:#bb88ff; font-size:8pt; font-style:italic;"
         )
         row1.addWidget(self.lbl_cal_active)
+        
+        row1.addSpacing(16)
+        
+        # Phase 2: Export buttons
+        self.btn_export_spe = QPushButton("≡ƒôÑ SPE")
+        self.btn_export_spe.setFixedWidth(64)
+        self.btn_export_spe.setStyleSheet(
+            "QPushButton{color:#aaddff;background:#0d1a26;border:1px solid #336699;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
+            "QPushButton:hover{background:#132639;border-color:#aaddff;}"
+        )
+        self.btn_export_spe.clicked.connect(self._export_spe)
+        row1.addWidget(self.btn_export_spe)
+
+        self.btn_export_csv = QPushButton("≡ƒôÑ CSV")
+        self.btn_export_csv.setFixedWidth(64)
+        self.btn_export_csv.setStyleSheet(
+            "QPushButton{color:#aaddff;background:#0d1a26;border:1px solid #336699;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
+            "QPushButton:hover{background:#132639;border-color:#aaddff;}"
+        )
+        self.btn_export_csv.clicked.connect(self._export_csv)
+        row1.addWidget(self.btn_export_csv)
+
+        # ΓöÇΓöÇ Offline CSV Viewer ΓöÇΓöÇ
+        self.btn_load_csv = QPushButton("📂 Load CSV")
+        self.btn_load_csv.setFixedWidth(80)
+        self.btn_load_csv.setStyleSheet(
+            "QPushButton{color:#aaffaa;background:#0d261a;border:1px solid #339966;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
+            "QPushButton:hover{background:#133926;border-color:#aaffaa;}"
+        )
+        self.btn_load_csv.clicked.connect(self._load_csv)
+        row1.addWidget(self.btn_load_csv)
+        
+        self.btn_load_z1d = QPushButton("📂 Load .z1d")
+        self.btn_load_z1d.setFixedWidth(80)
+        self.btn_load_z1d.setStyleSheet(
+            "QPushButton{color:#aaffaa;background:#0d261a;border:1px solid #339966;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
+            "QPushButton:hover{background:#133926;border-color:#aaffaa;}"
+        )
+        self.btn_load_z1d.clicked.connect(self._load_z1d)
+        row1.addWidget(self.btn_load_z1d)
+
+        self.btn_resume_live = QPushButton("Γû╢ Resume Live")
+        self.btn_resume_live.setFixedWidth(90)
+        self.btn_resume_live.setStyleSheet(
+            "QPushButton{color:#ffaaaa;background:#260d0d;border:1px solid #993333;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;font-weight:bold;}"
+            "QPushButton:hover{background:#391313;border-color:#ffaaaa;}"
+        )
+        self.btn_resume_live.clicked.connect(self._resume_live)
+        self.btn_resume_live.setVisible(False)
+        row1.addWidget(self.btn_resume_live)
 
         row1.addStretch()
 
         # Channel + counts info (crosshair readout)
-        self.lbl_cursor = QLabel("Ch: —   Cts: —")
+        self.lbl_cursor = QLabel("Ch: ΓÇö   Cts: ΓÇö")
         self.lbl_cursor.setStyleSheet("color:#555; font-size:9pt; font-family:monospace;")
         row1.addWidget(self.lbl_cursor)
 
         # Peak info
-        self.lbl_peak = QLabel("Peak: —")
+        self.lbl_peak = QLabel("Peak: ΓÇö")
         self.lbl_peak.setStyleSheet("color:#777; font-size:9pt;")
         row1.addWidget(self.lbl_peak)
         layout.addLayout(row1)
 
-        # ── Plot widget ─────────────────────────────────────────────────
+        # ΓöÇΓöÇ Plot widget ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         pg.setConfigOption("background", "#0d0d0d")
         pg.setConfigOption("foreground", "#888")
         self.plot = pg.PlotWidget()
@@ -653,7 +1002,7 @@ class SpectrumPanel(QGroupBox):
         self.plot.showGrid(x=True, y=True, alpha=0.15)
         self.plot.getPlotItem().setMenuEnabled(False)
 
-        # Spectrum curve — PyQtGraph 0.13+: stepMode requires len(x)==len(y)
+        # Spectrum curve ΓÇö PyQtGraph 0.13+: stepMode requires len(x)==len(y)
         self.curve = self.plot.plot(
             np.arange(MAX_CHANNELS, dtype=np.float32),
             np.zeros(MAX_CHANNELS, dtype=np.float32),
@@ -661,7 +1010,7 @@ class SpectrumPanel(QGroupBox):
             stepMode="left"
         )
 
-        # ── Phase 7.3: ROI (LinearRegionItem) ──────────────────────────
+        # ΓöÇΓöÇ Phase 7.3: ROI (LinearRegionItem) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         self.roi = pg.LinearRegionItem(
             values=[100, 500],
             brush=pg.mkBrush(0, 180, 255, 25),
@@ -672,7 +1021,7 @@ class SpectrumPanel(QGroupBox):
         self.roi.sigRegionChanged.connect(self._update_roi_readout)
         self.plot.addItem(self.roi)
 
-        # ── Phase 7.3: Crosshair ────────────────────────────────────────
+        # ΓöÇΓöÇ Phase 7.3: Crosshair ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         self._vline = pg.InfiniteLine(angle=90, movable=False,
                                       pen=pg.mkPen("#444", width=1))
         self._hline = pg.InfiniteLine(angle=0,  movable=False,
@@ -684,19 +1033,35 @@ class SpectrumPanel(QGroupBox):
 
         layout.addWidget(self.plot)
 
-        # ── Toolbar row 2: ROI readout ───────────────────────────────────
+        # ΓöÇΓöÇ Toolbar row 2: ROI readout ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         row2 = QHBoxLayout()
         row2.addWidget(QLabel("ROI:"))
 
-        self.lbl_roi_range = QLabel("ch 100 – 500")
+        self.lbl_roi_range = QLabel("ch 100 ΓÇô 500")
         self.lbl_roi_range.setStyleSheet(
             "color:#00b4dd; font-size:9pt; font-family:monospace;"
         )
         row2.addWidget(self.lbl_roi_range)
         row2.addSpacing(20)
 
-        row2.addWidget(QLabel("Area:"))
-        self.lbl_roi_area = QLabel("—")
+        row2.addWidget(QLabel("Gross Area:"))
+        self.lbl_roi_gross = QLabel("ΓÇö")
+        self.lbl_roi_gross.setStyleSheet(
+            "color:#888; font-size:9pt; font-family:monospace;"
+        )
+        row2.addWidget(self.lbl_roi_gross)
+        row2.addSpacing(15)
+
+        row2.addWidget(QLabel("Background:"))
+        self.cmb_bg = QComboBox()
+        self.cmb_bg.addItems(["Trapezoid", "SNIP", "Polynomial", "None"])
+        self.cmb_bg.setStyleSheet("background:#1e1e1e; color:#ccc; border:1px solid #333; border-radius:3px;")
+        self.cmb_bg.currentIndexChanged.connect(self._update_roi_readout)
+        row2.addWidget(self.cmb_bg)
+        row2.addSpacing(15)
+
+        row2.addWidget(QLabel("Net Area:"))
+        self.lbl_roi_area = QLabel("ΓÇö")
         self.lbl_roi_area.setStyleSheet(
             "color:#00d4ff; font-size:9pt; font-weight:bold; font-family:monospace;"
         )
@@ -704,7 +1069,7 @@ class SpectrumPanel(QGroupBox):
         row2.addSpacing(20)
 
         row2.addWidget(QLabel("Centroid:"))
-        self.lbl_roi_centroid = QLabel("—")
+        self.lbl_roi_centroid = QLabel("ΓÇö")
         self.lbl_roi_centroid.setStyleSheet(
             "color:#7fd4ff; font-size:9pt; font-family:monospace;"
         )
@@ -720,7 +1085,7 @@ class SpectrumPanel(QGroupBox):
 
         layout.addLayout(row2)
 
-        # ── Phase 7.4: Peak Search toolbar ───────────────────────────────
+        # ΓöÇΓöÇ Phase 7.4: Peak Search toolbar ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         row3 = QHBoxLayout()
         row3.addWidget(QLabel("Peak Search:"))
 
@@ -748,7 +1113,7 @@ class SpectrumPanel(QGroupBox):
         )
         row3.addWidget(self.spn_sep)
 
-        self.btn_find = QPushButton("🔍 Find Peaks")
+        self.btn_find = QPushButton("≡ƒöì Find Peaks")
         self.btn_find.setFixedWidth(100)
         self.btn_find.setStyleSheet(
             "QPushButton{color:#ffd700;background:#1a1600;border:1px solid #554400;"
@@ -760,7 +1125,7 @@ class SpectrumPanel(QGroupBox):
         self.btn_find.setEnabled(SCIPY_AVAILABLE)
         row3.addWidget(self.btn_find)
 
-        self.btn_clear_peaks = QPushButton("✕ Clear")
+        self.btn_clear_peaks = QPushButton("Γ£ò Clear")
         self.btn_clear_peaks.setFixedWidth(60)
         self.btn_clear_peaks.setStyleSheet(
             "QPushButton{color:#888;background:#1e1e1e;border:1px solid #333;"
@@ -776,16 +1141,16 @@ class SpectrumPanel(QGroupBox):
         row3.addStretch()
 
         if not SCIPY_AVAILABLE:
-            warn = QLabel("⚠ scipy missing")
+            warn = QLabel("ΓÜá scipy missing")
             warn.setStyleSheet("color:#884400; font-size:8pt;")
             row3.addWidget(warn)
 
         layout.addLayout(row3)
 
-        # ── Phase 7.4: Peak table ─────────────────────────────────────────
-        self.peak_table = QTableWidget(0, 4)
+        # ΓöÇΓöÇ Phase 7.4: Peak table ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+        self.peak_table = QTableWidget(0, 5)
         self.peak_table.setHorizontalHeaderLabels(
-            ["Channel", "Counts", "Est. FWHM", "Fit FWHM"]
+            ["Centroid", "Gross Counts", "Net Counts", "FWHM (ch)", "Isotope ID"]
         )
         self.peak_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.peak_table.setMaximumHeight(120)
@@ -802,23 +1167,28 @@ class SpectrumPanel(QGroupBox):
         )
         layout.addWidget(self.peak_table)
 
-        # ── Phase 7.5: Fit results row ────────────────────────────────────────
+        # ΓöÇΓöÇ Phase 7.5: Fit results row ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         fit_row = QHBoxLayout()
         fit_lbl = QLabel("Fit:")
         fit_lbl.setStyleSheet("color:#ff9900; font-size:9pt; font-weight:bold;")
         fit_row.addWidget(fit_lbl)
 
-        fit_row.addWidget(QLabel("Click a row in the table to fit →"))
+        fit_row.addWidget(QLabel("Click a row in the table to fit ΓåÆ"))
+        
+        self.cmb_fit_model = QComboBox()
+        self.cmb_fit_model.addItems(["Auto", "Gaussian", "Gaussian+Slope", "Hypermet", "Voigt"])
+        self.cmb_fit_model.setStyleSheet("background:#1e1e1e; color:#ccc; border:1px solid #333; border-radius:3px;")
+        fit_row.addWidget(self.cmb_fit_model)
 
         self.lbl_fit_centroid = self._fit_val("Centroid", "#ffcc44")
         self.lbl_fit_fwhm     = self._fit_val("FWHM",     "#ffaa22")
         self.lbl_fit_area     = self._fit_val("Area",     "#ff8800")
-        self.lbl_fit_chi2     = self._fit_val("χ²/dof",   "#cc6600")
+        self.lbl_fit_chi2     = self._fit_val("╧ç┬▓/dof",   "#cc6600")
         for w in [self.lbl_fit_centroid, self.lbl_fit_fwhm,
                   self.lbl_fit_area, self.lbl_fit_chi2]:
             fit_row.addWidget(w)
 
-        self.btn_clear_fits = QPushButton("✕ Fits")
+        self.btn_clear_fits = QPushButton("Γ£ò Fits")
         self.btn_clear_fits.setFixedWidth(56)
         self.btn_clear_fits.setStyleSheet(
             "QPushButton{color:#664400;background:#1e1e1e;border:1px solid #333;"
@@ -830,12 +1200,17 @@ class SpectrumPanel(QGroupBox):
         fit_row.addStretch()
         layout.addLayout(fit_row)
 
-        # Connect table click → fit that peak (Phase 7.5)
+        # Connect table click ΓåÆ fit that peak (Phase 7.5)
         self.peak_table.cellClicked.connect(self._on_table_click)
 
-    # ── Public API used by the main window ──────────────────────────────────
+    # ΓöÇΓöÇ Public API used by the main window ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def update_spectrum(self, data: np.ndarray):
         """Set new spectrum data and refresh plot + ROI + peak markers."""
+        if self._offline_mode:
+            return
+        self._set_spectrum_data(data)
+
+    def _set_spectrum_data(self, data: np.ndarray):
         # Guard: ignore empty arrays (PV not yet connected)
         if data is None or (hasattr(data, '__len__') and len(data) == 0):
             return
@@ -854,7 +1229,7 @@ class SpectrumPanel(QGroupBox):
             pk = int(np.argmax(disp))
             self.lbl_peak.setText(f"Peak: ch {pk}  ({int(disp[pk]):,} cts)")
         else:
-            self.lbl_peak.setText("Peak: —")
+            self.lbl_peak.setText("Peak: ΓÇö")
 
         self._update_roi_readout()
         # Peak markers stay on plot; they are only re-run when user clicks Find.
@@ -863,7 +1238,7 @@ class SpectrumPanel(QGroupBox):
     def current_detector(self) -> int:
         return self._current_det
 
-    # ── Slot: detector changed ───────────────────────────────────────────────
+    # ΓöÇΓöÇ Slot: detector changed ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def _on_det_changed(self, idx):
         self._current_det = self.det_combo.itemData(idx)
         self._data = np.zeros(MAX_CHANNELS, dtype=np.float32)
@@ -871,49 +1246,73 @@ class SpectrumPanel(QGroupBox):
             x=np.arange(MAX_CHANNELS, dtype=np.float32),
             y=np.zeros(MAX_CHANNELS, dtype=np.float32)
         )
-        self.lbl_peak.setText("Peak: —")
-        self.lbl_roi_area.setText("—")
-        self.lbl_roi_centroid.setText("—")
+        self.lbl_peak.setText("Peak: ΓÇö")
+        self.lbl_roi_gross.setText("ΓÇö")
+        self.lbl_roi_area.setText("ΓÇö")
+        self.lbl_roi_centroid.setText("ΓÇö")
 
-    # ── Slot: log/lin toggle ─────────────────────────────────────────────────
+    # ΓöÇΓöÇ Slot: log/lin toggle ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def _toggle_log(self, checked: bool):
         self._log_mode = checked
         self.plot.setLogMode(y=checked)
         self.btn_log.setText("Lin Y" if checked else "Log Y")
 
-    # ── Slot: auto-range ────────────────────────────────────────────────────
+    # ΓöÇΓöÇ Slot: auto-range ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def _auto_range(self):
         self.plot.autoRange()
 
-    # ── Slot: ROI visibility ─────────────────────────────────────────────────
+    # ΓöÇΓöÇ Slot: ROI visibility ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def _toggle_roi(self, visible: bool):
         self.roi.setVisible(visible)
 
-    # ── Slot: ROI moved/resized → update area + centroid readout ────────────
+    # ΓöÇΓöÇ Slot: ROI moved/resized ΓåÆ update area + centroid readout ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def _update_roi_readout(self):
         lo, hi = self.roi.getRegion()
         lo_ch = max(0, int(lo))
         hi_ch = min(len(self._data), int(hi))
-        self.lbl_roi_range.setText(f"ch {lo_ch} – {hi_ch}")
+        self.lbl_roi_range.setText(f"ch {lo_ch} ΓÇô {hi_ch}")
 
         if hi_ch <= lo_ch or not self._data.any():
-            self.lbl_roi_area.setText("—")
-            self.lbl_roi_centroid.setText("—")
+            self.lbl_roi_gross.setText("ΓÇö")
+            self.lbl_roi_area.setText("ΓÇö")
+            self.lbl_roi_centroid.setText("ΓÇö")
             return
 
-        region = self._data[lo_ch:hi_ch]
-        area   = int(np.sum(region))
-        self.lbl_roi_area.setText(f"{area:,}")
-
-        # Weighted centroid
-        if area > 0:
-            channels  = np.arange(lo_ch, hi_ch, dtype=np.float64)
-            centroid  = float(np.dot(channels, region.astype(np.float64)) / area)
-            self.lbl_roi_centroid.setText(f"ch {centroid:.2f}")
+        # Use analysis engine for ROI background & net area
+        method_str = self.cmb_bg.currentText().lower()
+        if method_str == "trapezoid":
+            method = "trapezoid"
+        elif method_str == "snip":
+            method = "snip"
+        elif method_str == "polynomial":
+            method = "polynomial"
         else:
-            self.lbl_roi_centroid.setText("—")
+            method = "none"
+            
+        roi_res = bg_module.roi_net_area(
+            self._data, lo_ch, hi_ch, method=method
+        )
+        
+        gross_area = roi_res["gross"]
+        net_area = roi_res["net"]
+        self.lbl_roi_gross.setText(f"{int(gross_area):,}")
+        self.lbl_roi_area.setText(f"{int(net_area):,}")
 
-    # ── Slot: mouse move → crosshair + cursor readout ────────────────────────
+        # Compute Currie limits for display in tooltip
+        Lc, Ld = bg_module.currie_limits(roi_res["background"])
+        self.lbl_roi_area.setToolTip(f"Critical level (L_C): {Lc:.1f}\\nDetection limit (L_D): {Ld:.1f}")
+
+        if net_area > 0:
+            centroid = roi_res["centroid_ch"]
+            if self._cal_poly is not None:
+                centroid_kev = self._cal_poly(centroid)
+                self.lbl_roi_centroid.setText(f"{centroid_kev:.2f} keV")
+            else:
+                self.lbl_roi_centroid.setText(f"ch {centroid:.2f}")
+        else:
+            self.lbl_roi_centroid.setText("ΓÇö")
+
+    # ΓöÇΓöÇ Slot: mouse move ΓåÆ crosshair + cursor readout ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def _on_mouse_move(self, pos):
         vb = self.plot.getViewBox()
         if not self.plot.sceneBoundingRect().contains(pos):
@@ -927,50 +1326,67 @@ class SpectrumPanel(QGroupBox):
             cts = int(self._data[ch])
             self.lbl_cursor.setText(f"Ch: {ch:5d}   Cts: {cts:,}")
         else:
-            self.lbl_cursor.setText("Ch: —   Cts: —")
+            self.lbl_cursor.setText("Ch: ΓÇö   Cts: ΓÇö")
 
-    # ── Phase 7.4: Peak search ───────────────────────────────────────────────
+    # ΓöÇΓöÇ Phase 7.4: Peak search ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def _run_peak_search(self):
-        """Run scipy.signal.find_peaks on current spectrum and draw markers."""
-        if not SCIPY_AVAILABLE or not self._data.any():
+        """Run Mariscotti peak search, fit local Gaussians, and draw markers."""
+        if not self._data.any():
             return
 
         self._clear_peak_markers()
-
-        data   = self._data.astype(np.float64)
-        maxval = float(data.max())
-        if maxval <= 0:
-            self.lbl_npeaks.setText("(no data)")
-            return
-
-        min_height = maxval * (self.spn_height.value() / 100.0)
+        
+        min_height = self.spn_height.value() / 100.0
         min_sep    = self.spn_sep.value()
 
-        peaks, props = find_peaks(
-            data,
-            height=min_height,
-            distance=min_sep,
-            width=1          # request width info for FWHM estimate
+        # 1. Run Mariscotti search via analysis engine
+        peaks = peak_module.find_peaks_mariscotti(
+            self._data,
+            min_height_fraction=min_height,
+            min_separation=min_sep,
+            mariscotti_sigma=3.0,
+            max_fwhm_channels=60.0,
+            fwhm_hint=10.0,
+            cal_poly=self._cal_poly
         )
 
         self.peak_table.setRowCount(0)
 
-        for i, ch in enumerate(peaks):
-            cts = int(data[ch])
+        for p in peaks:
+            # 2. Fast Gaussian fit for table population
+            fit_res = fit_module.fit_gaussian(self._data, p.channel, p.fwhm_est)
+            
+            if fit_res.success:
+                centroid_val = fit_res.centroid
+                fwhm_val = fit_res.fwhm_ch
+                net_area_val = f"{int(fit_res.area):,}"
+            else:
+                centroid_val = p.centroid
+                fwhm_val = p.fwhm_est
+                net_area_val = "ΓÇö"
 
-            # Estimate FWHM: width at half-maximum (channels)
-            half_max = cts / 2.0
-            # Simple half-max crossing search ±50 channels
-            lo, hi = int(ch), int(ch)
-            while lo > 0       and data[lo] > half_max: lo -= 1
-            while hi < len(data)-1 and data[hi] > half_max: hi += 1
-            fwhm = hi - lo
+            # 3. Energy & Isotope ID
+            if self._cal_poly is not None:
+                energy_val = self._cal_poly(centroid_val)
+                ch_energy_str = f"{centroid_val:.1f} ({energy_val:.1f} keV)"
+                match = iso_module.best_match_for_peak(energy_val, library=ISOTOPE_LIBRARY)
+                isotope_name = match.isotope if match else "ΓÇö"
+                pos_val = energy_val
+                if isotope_name != "ΓÇö":
+                    label_text = f"{isotope_name} ({energy_val:.1f} keV)"
+                else:
+                    label_text = f"{energy_val:.1f} keV"
+            else:
+                ch_energy_str = f"{centroid_val:.1f}"
+                isotope_name = "ΓÇö"
+                pos_val = centroid_val
+                label_text = f"ch {centroid_val:.1f}"
 
-            # Draw vertical marker
+            # 4. Draw marker
             line = pg.InfiniteLine(
-                pos=ch, angle=90, movable=False,
+                pos=pos_val, angle=90, movable=False,
                 pen=pg.mkPen("#ffd700", width=1, style=Qt.DashLine),
-                label=f"{ch}",
+                label=label_text,
                 labelOpts={
                     "position": 0.97,
                     "color": "#ffd700",
@@ -981,12 +1397,22 @@ class SpectrumPanel(QGroupBox):
             self.plot.addItem(line)
             self._peak_lines.append(line)
 
-            # Add to table
+            # 5. Populate table
             row = self.peak_table.rowCount()
             self.peak_table.insertRow(row)
-            for col, val in enumerate([str(ch), f"{cts:,}", f"{fwhm} ch", "—"]):
+            table_vals = [
+                ch_energy_str,
+                f"{p.counts:,}",
+                net_area_val,
+                f"{fwhm_val:.1f}",
+                isotope_name
+            ]
+            for col, val in enumerate(table_vals):
                 item = QTableWidgetItem(val)
                 item.setTextAlignment(Qt.AlignCenter)
+                if col == 4 and isotope_name != "ΓÇö":
+                    item.setForeground(QColor("#00d4ff"))
+                    item.setFont(QFont("Sans", 9, QFont.Bold))
                 self.peak_table.setItem(row, col, item)
 
         n = len(peaks)
@@ -994,6 +1420,7 @@ class SpectrumPanel(QGroupBox):
             f"{n} peak{'s' if n != 1 else ''} found"
             if n > 0 else "No peaks found"
         )
+
 
     def _clear_peak_markers(self):
         """Remove all peak marker lines, fit curves, and clear the table."""
@@ -1004,11 +1431,11 @@ class SpectrumPanel(QGroupBox):
         self.peak_table.setRowCount(0)
         self.lbl_npeaks.setText("")
 
-    # ── Phase 7.5 helpers ───────────────────────────────────────────────────
+    # ΓöÇΓöÇ Phase 7.5 helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     @staticmethod
     def _fit_val(label: str, color: str) -> QLabel:
         """Create a styled label for a fit result field."""
-        w = QLabel(f"{label}: —")
+        w = QLabel(f"{label}: ΓÇö")
         w.setStyleSheet(
             f"color:{color}; font-size:9pt; font-family:monospace; "
             f"background:#1a1000; border:1px solid #332200; "
@@ -1025,67 +1452,64 @@ class SpectrumPanel(QGroupBox):
         return A * np.exp(-0.5 * ((x - mu) / sigma) ** 2) + B
 
     def _on_table_click(self, row: int, _col: int):
-        """Fit the Gaussian to the peak in the clicked table row."""
-        if not SCIPY_AVAILABLE:
-            return
+        """Fit the selected model to the peak in the clicked table row."""
         try:
             ch_item  = self.peak_table.item(row, 0)
-            cts_item = self.peak_table.item(row, 1)
-            fwhm_item= self.peak_table.item(row, 2)
-            if ch_item is None:
+            fwhm_item= self.peak_table.item(row, 3)
+            if ch_item is None or fwhm_item is None:
                 return
-            ch_center = int(ch_item.text())
-            cts_peak  = int(cts_item.text().replace(",", ""))
-            fwhm_est  = int(fwhm_item.text().split()[0])
-        except (ValueError, AttributeError):
+            ch_center = float(ch_item.text().split()[0])
+            fwhm_est  = float(fwhm_item.text().split()[0])
+        except (ValueError, AttributeError, IndexError):
             return
 
-        data = self._data.astype(np.float64)
-        N    = len(data)
+        model_str = self.cmb_fit_model.currentText().lower()
+        if model_str == "auto":
+            fit_res = fit_module.auto_fit(self._data, int(ch_center), fwhm_est)
+        else:
+            model_map = {
+                "gaussian": "gaussian",
+                "gaussian+slope": "gaussian_slope",
+                "hypermet": "hypermet",
+                "voigt": "voigt",
+                "multiplet": "multiplet"
+            }
+            mapped = model_map.get(model_str, "gaussian")
+            if mapped == "gaussian":
+                fit_res = fit_module.fit_gaussian(self._data, int(ch_center), fwhm_est)
+            elif mapped == "gaussian_slope":
+                fit_res = fit_module.fit_gaussian_slope(self._data, int(ch_center), fwhm_est)
+            elif mapped == "hypermet":
+                fit_res = fit_module.fit_hypermet(self._data, int(ch_center), fwhm_est)
+            elif mapped == "voigt":
+                fit_res = fit_module.fit_voigt(self._data, int(ch_center), fwhm_est)
+            else:
+                fit_res = fit_module.fit_gaussian(self._data, int(ch_center), fwhm_est)
 
-        # Fit window: ±2.5 × estimated FWHM, minimum ±5 channels
-        half_win = max(int(fwhm_est * 2.5), 5)
-        lo = max(0,   ch_center - half_win)
-        hi = min(N-1, ch_center + half_win)
-        if hi - lo < 5:
+        if not fit_res.success:
             self._set_fit_labels(None)
             return
-
-        x_fit = np.arange(lo, hi + 1, dtype=np.float64)
-        y_fit = data[lo:hi + 1]
-
-        # Initial guess: (amplitude, centroid, sigma, background)
-        sigma_init = max(fwhm_est / 2.355, 1.0)
-        p0 = [float(cts_peak), float(ch_center), sigma_init, float(np.min(y_fit))]
-        bounds = (
-            [0,      lo,    0.5,  0],
-            [1e9,    hi,    half_win, float(np.max(y_fit)) + 1]
-        )
-
-        try:
-            popt, pcov = curve_fit(
-                self._gaussian_bg, x_fit, y_fit,
-                p0=p0, bounds=bounds, maxfev=5000
-            )
-        except (RuntimeError, ValueError):
-            self._set_fit_labels(None)
-            return
-
-        A, mu, sigma, B = popt
-        perr = np.sqrt(np.diag(pcov))
-
-        fwhm_fit  = 2.355 * abs(sigma)
-        area_fit  = A * abs(sigma) * np.sqrt(2 * np.pi)  # integral of Gaussian
-
-        # Reduced chi-squared
-        y_model   = self._gaussian_bg(x_fit, *popt)
-        residuals = y_fit - y_model
-        dof       = max(len(x_fit) - 4, 1)
-        chi2_red  = float(np.sum(residuals ** 2 / np.maximum(y_fit, 1)) / dof)
 
         # Draw smooth fit curve
+        half_win = max(int(fwhm_est * 3.5), 6)
+        lo = max(0, int(ch_center) - half_win)
+        hi = min(len(self._data)-1, int(ch_center) + half_win)
         x_dense = np.linspace(lo, hi, 500)
-        y_dense = self._gaussian_bg(x_dense, *popt)
+        
+        # We need to recreate the model evaluated at x_dense
+        if fit_res.model == "gaussian":
+            y_dense = fit_module._gauss_flat(x_dense, **fit_res.params)
+        elif fit_res.model == "gaussian_slope":
+            y_dense = fit_module._gauss_slope(x_dense, **fit_res.params)
+        elif fit_res.model == "hypermet":
+            y_dense = fit_module._hypermet(x_dense, **fit_res.params)
+        elif fit_res.model == "voigt":
+            y_dense = fit_module._voigt_model(x_dense, **fit_res.params)
+        elif fit_res.model == "bayesian":
+            y_dense = fit_module._gauss_flat(x_dense, **fit_res.params)
+        else:
+            y_dense = np.zeros_like(x_dense)
+
         fit_curve = self.plot.plot(
             x_dense, y_dense,
             pen=pg.mkPen("#ff9900", width=2)
@@ -1093,27 +1517,32 @@ class SpectrumPanel(QGroupBox):
         self._fit_curves.append(fit_curve)
 
         # Update result labels
-        self._set_fit_labels((mu, fwhm_fit, area_fit, chi2_red))
+        self._set_fit_labels((fit_res.centroid, fit_res.fwhm_ch, fit_res.area, fit_res.chi2_red))
 
-        # Update "Fit FWHM" column in table
-        item = QTableWidgetItem(f"{fwhm_fit:.1f} ch")
-        item.setTextAlignment(Qt.AlignCenter)
-        item.setForeground(QColor("#ff9900"))
-        self.peak_table.setItem(row, 3, item)
+        # Update Net Counts and FWHM columns in the table
+        net_item = QTableWidgetItem(f"{int(fit_res.area):,}")
+        net_item.setTextAlignment(Qt.AlignCenter)
+        net_item.setForeground(QColor("#ff9900"))
+        self.peak_table.setItem(row, 2, net_item)
+
+        fwhm_item_new = QTableWidgetItem(f"{fit_res.fwhm_ch:.1f}")
+        fwhm_item_new.setTextAlignment(Qt.AlignCenter)
+        fwhm_item_new.setForeground(QColor("#ff9900"))
+        self.peak_table.setItem(row, 3, fwhm_item_new)
 
     def _set_fit_labels(self, results):
         """Update or clear the fit result labels."""
         if results is None:
-            self.lbl_fit_centroid.setText("Centroid: —  (fit failed)")
-            self.lbl_fit_fwhm.setText("FWHM: —")
-            self.lbl_fit_area.setText("Area: —")
-            self.lbl_fit_chi2.setText("χ²/dof: —")
+            self.lbl_fit_centroid.setText("Centroid: ΓÇö  (fit failed)")
+            self.lbl_fit_fwhm.setText("FWHM: ΓÇö")
+            self.lbl_fit_area.setText("Area: ΓÇö")
+            self.lbl_fit_chi2.setText("╧ç┬▓/dof: ΓÇö")
             return
         mu, fwhm, area, chi2 = results
         self.lbl_fit_centroid.setText(f"Centroid: {mu:.3f}")
         self.lbl_fit_fwhm.setText(f"FWHM: {fwhm:.2f} ch")
         self.lbl_fit_area.setText(f"Area: {area:,.0f}")
-        self.lbl_fit_chi2.setText(f"χ²/dof: {chi2:.2f}")
+        self.lbl_fit_chi2.setText(f"╧ç┬▓/dof: {chi2:.2f}")
 
     def _clear_fits(self):
         """Remove all Gaussian fit curves from the plot."""
@@ -1121,23 +1550,105 @@ class SpectrumPanel(QGroupBox):
             self.plot.removeItem(c)
         self._fit_curves.clear()
         self._set_fit_labels(None)
-        # Reset Fit FWHM column
+        # Reset table columns
         for r in range(self.peak_table.rowCount()):
-            item = QTableWidgetItem("—")
-            item.setTextAlignment(Qt.AlignCenter)
-            self.peak_table.setItem(r, 3, item)
+            net_item = QTableWidgetItem("ΓÇö")
+            net_item.setTextAlignment(Qt.AlignCenter)
+            self.peak_table.setItem(r, 2, net_item)
+            fwhm_item = QTableWidgetItem("ΓÇö")
+            fwhm_item.setTextAlignment(Qt.AlignCenter)
+            self.peak_table.setItem(r, 3, fwhm_item)
 
-    # ── Phase 7.6: Calibration ──────────────────────────────────────────────────
+    # ΓöÇΓöÇ Phase 7.6: Calibration ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def _open_calibration_dialog(self):
         """Open the calibration dialog (Phase 7.6)."""
         dlg = CalibrationDialog(parent=self, spectrum_panel=self)
         dlg.exec_()
+            
+    def _export_csv(self):
+        if not self._data.any():
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Export ROOT-CSV", "spectrum.csv", "CSV files (*.csv);;All files (*)")
+        if path:
+            exp_module.export_root_csv(path, self._data, cal_poly=self._cal_poly)
+            QMessageBox.information(self, "Export Successful", f"ROOT-CSV file saved to:\n{path}")
+
+    def _load_csv(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Load ROOT-CSV", "", "CSV files (*.csv);;All files (*)")
+        if not path:
+            return
+        try:
+            # Try loading with header first (export_root_csv format: channel,counts,energy_keV)
+            try:
+                data = np.loadtxt(path, delimiter=',', skiprows=1)
+            except (ValueError, StopIteration):
+                # Fallback if no header or empty file
+                data = np.loadtxt(path, delimiter=',')
+
+            # Handle 1D array (single column — treat as raw counts)
+            if data.ndim == 1:
+                counts = data
+            elif data.ndim == 2 and data.shape[1] >= 2:
+                counts = data[:, 1]   # column 1 = counts
+            elif data.ndim == 2 and data.shape[1] == 1:
+                counts = data[:, 0]   # single column
+            else:
+                QMessageBox.warning(self, "Error", "CSV must have at least 1 column of count data.")
+                return
+
+            # Pad to MAX_CHANNELS if smaller, truncate if larger
+            spec = np.zeros(MAX_CHANNELS, dtype=np.float32)
+            length = min(len(counts), MAX_CHANNELS)
+            spec[:length] = counts[:length]
+
+            self._offline_mode = True
+            self.btn_resume_live.setVisible(True)
+            self.btn_load_csv.setVisible(False)
+            self.btn_load_z1d.setVisible(False)
+            self._clear_peak_markers()   # clear analysis overlays from previous data
+            self._set_spectrum_data(spec)
+        except Exception as e:
+            QMessageBox.critical(self, "Load Failed", f"Could not parse CSV:\n{e}")
+
+    def _load_z1d(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Load .z1d Spectrum", "", "Z1D files (*.z1d);;All files (*)")
+        if not path:
+            return
+        try:
+            sz = os.path.getsize(path)
+            with open(path, 'rb') as f:
+                if sz % 4 == 0 and sz >= MAX_CHANNELS * 4:
+                    data = np.frombuffer(f.read(), dtype=np.int32)
+                else:
+                    data = np.frombuffer(f.read(), dtype=np.int16)
+            
+            spec = np.zeros(MAX_CHANNELS, dtype=np.float32)
+            length = min(len(data), MAX_CHANNELS)
+            spec[:length] = data[:length]
+            
+            self._offline_mode = True
+            self.btn_resume_live.setVisible(True)
+            self.btn_load_csv.setVisible(False)
+            self.btn_load_z1d.setVisible(False)
+            self._clear_peak_markers()
+            self._set_spectrum_data(spec)
+        except Exception as e:
+            QMessageBox.critical(self, "Load Failed", f"Could not load .z1d:\n{e}")
+
+    def _resume_live(self):
+        self._offline_mode = False
+        self.btn_resume_live.setVisible(False)
+        self.btn_load_csv.setVisible(True)
+        self.btn_load_z1d.setVisible(True)
+        self._clear_peak_markers()   # clear offline analysis overlays
+        self._set_spectrum_data(np.zeros(MAX_CHANNELS, dtype=np.float32))
 
     def apply_calibration(self, poly: np.poly1d, degree: int):
         """Switch x-axis to keV using the given polynomial."""
         self._cal_poly = poly
         self.plot.setLabel("bottom", "Energy (keV)")
-        self.lbl_cal_active.setText(f"[cal·{degree}]")
+        self.lbl_cal_active.setText(f"[cal┬╖{degree}]")
+        self._clear_peak_markers()
         self._refresh_calibrated_axis()
 
     def remove_calibration(self):
@@ -1145,6 +1656,7 @@ class SpectrumPanel(QGroupBox):
         self._cal_poly = None
         self.plot.setLabel("bottom", "Channel")
         self.lbl_cal_active.setText("")
+        self._clear_peak_markers()
         # Re-render spectrum in channel space
         self.update_spectrum(self._data)
 
@@ -1169,6 +1681,14 @@ class SpectrumPanel(QGroupBox):
         except (IndexError, ValueError):
             return None
 
+    def _export_spe(self):
+        if not self._data.any():
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Export SPE", "spectrum.spe", "SPE files (*.spe);;All files (*)")
+        if path:
+            exp_module.export_spe(path, self._data, live_time_s=1.0, real_time_s=1.0)
+            QMessageBox.information(self, "Export Successful", f"SPE file saved to:\n{path}")
+            
 # ---------------------------------------------------------------------------
 # Phase 7.6: Calibration Dialog
 # ---------------------------------------------------------------------------
@@ -1218,16 +1738,16 @@ class CalibrationDialog(QDialog):
         self.setStyleSheet(self.DARK)
         self._build()
 
-    # ── Build UI ────────────────────────────────────────────────────────────────────
+    # ΓöÇΓöÇ Build UI ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def _build(self):
         root = QVBoxLayout(self)
         root.setSpacing(10)
         root.setContentsMargins(14, 14, 14, 10)
 
-        # ── Title
+        # ΓöÇΓöÇ Title
         title = QLabel(
-            "<b style='color:#bb88ff'>📐 Energy Calibration</b>"
-            "<span style='color:#444; font-size:9pt'> — assign keV to fitted peaks</span>"
+            "<b style='color:#bb88ff'>≡ƒôÉ Energy Calibration</b>"
+            "<span style='color:#444; font-size:9pt'> ΓÇö assign keV to fitted peaks</span>"
         )
         title.setFont(QFont("Sans", 11))
         root.addWidget(title)
@@ -1235,7 +1755,7 @@ class CalibrationDialog(QDialog):
         sep = QFrame(); sep.setFrameShape(QFrame.HLine)
         sep.setStyleSheet("color:#222;"); root.addWidget(sep)
 
-        # ── Calibration point table
+        # ΓöÇΓöÇ Calibration point table
         cal_grp = QGroupBox("Calibration Points")
         cg = QVBoxLayout(cal_grp)
 
@@ -1258,19 +1778,39 @@ class CalibrationDialog(QDialog):
         self.btn_add_manual.clicked.connect(self._add_manual)
         btn_row.addWidget(self.btn_add_manual)
 
-        self.btn_remove = self._small_btn("− Remove selected", "#883333", "#220000")
+        self.btn_remove = self._small_btn("ΓêÆ Remove selected", "#883333", "#220000")
         self.btn_remove.clicked.connect(self._remove_selected)
         btn_row.addWidget(self.btn_remove)
         btn_row.addStretch()
         cg.addLayout(btn_row)
+        
+        # ΓöÇΓöÇ Standard Sources Dropdown
+        src_row = QHBoxLayout()
+        src_row.addWidget(QLabel("Standard Source:"))
+        self.cmb_source = QComboBox()
+        sources = ["Custom"] + sorted(iso_module.BUILTIN_LIBRARY.keys())
+        self.cmb_source.addItems(sources)
+        self.cmb_source.setStyleSheet("background:#1e1e1e; color:#ccc; border:1px solid #333; border-radius:3px;")
+        src_row.addWidget(self.cmb_source)
+
+        self.btn_load_src = self._small_btn("Γ¼ç Load Energies", "#00d8ff", "#002b33")
+        self.btn_load_src.clicked.connect(self._load_standard_source)
+        src_row.addWidget(self.btn_load_src)
+
+        self.btn_auto_match = self._small_btn("ΓÜí Auto-Match Peaks", "#ffaa22", "#332200")
+        self.btn_auto_match.clicked.connect(self._auto_match_peaks)
+        src_row.addWidget(self.btn_auto_match)
+        src_row.addStretch()
+        cg.addLayout(src_row)
+        
         root.addWidget(cal_grp)
 
-        # ── Fit options
+        # ΓöÇΓöÇ Fit options
         opt_row = QHBoxLayout()
         opt_row.addWidget(QLabel("Polynomial degree:"))
         self._deg_grp = QButtonGroup(self)
-        self.rad_lin  = QRadioButton("Linear  (E = a·ch + b)")
-        self.rad_quad = QRadioButton("Quadratic  (E = a·ch² + b·ch + c)")
+        self.rad_lin  = QRadioButton("Linear  (E = a┬╖ch + b)")
+        self.rad_quad = QRadioButton("Quadratic  (E = a┬╖ch┬▓ + b┬╖ch + c)")
         self.rad_lin.setChecked(True)
         self._deg_grp.addButton(self.rad_lin,  1)
         self._deg_grp.addButton(self.rad_quad, 2)
@@ -1281,7 +1821,7 @@ class CalibrationDialog(QDialog):
 
         # Fit button + equation display
         fit_row = QHBoxLayout()
-        self.btn_fit = self._small_btn("📈 Fit Calibration", "#44cc88", "#002211")
+        self.btn_fit = self._small_btn("≡ƒôê Fit Calibration", "#44cc88", "#002211")
         self.btn_fit.setFixedWidth(130)
         self.btn_fit.clicked.connect(self._run_fit)
         fit_row.addWidget(self.btn_fit)
@@ -1301,26 +1841,26 @@ class CalibrationDialog(QDialog):
         sep2 = QFrame(); sep2.setFrameShape(QFrame.HLine)
         sep2.setStyleSheet("color:#222;"); root.addWidget(sep2)
 
-        # ── Apply + file buttons
+        # ΓöÇΓöÇ Apply + file buttons
         bottom = QHBoxLayout()
 
-        self.btn_apply = self._small_btn("✅ Apply to spectrum", "#44cc88", "#002211")
+        self.btn_apply = self._small_btn("Γ£à Apply to spectrum", "#44cc88", "#002211")
         self.btn_apply.setEnabled(False)
         self.btn_apply.clicked.connect(self._apply)
         bottom.addWidget(self.btn_apply)
 
-        self.btn_remove_cal = self._small_btn("❌ Remove calibration", "#883333", "#220000")
+        self.btn_remove_cal = self._small_btn("Γ¥î Remove calibration", "#883333", "#220000")
         self.btn_remove_cal.clicked.connect(self._remove_cal)
         bottom.addWidget(self.btn_remove_cal)
 
         bottom.addSpacing(20)
 
-        self.btn_save = self._small_btn("💾 Save .cal", "#5588cc", "#001122")
+        self.btn_save = self._small_btn("≡ƒÆ╛ Save .cal", "#5588cc", "#001122")
         self.btn_save.setEnabled(False)
         self.btn_save.clicked.connect(self._save_cal)
         bottom.addWidget(self.btn_save)
 
-        self.btn_load = self._small_btn("📂 Load .cal", "#5588cc", "#001122")
+        self.btn_load = self._small_btn("≡ƒôé Load .cal", "#5588cc", "#001122")
         self.btn_load.clicked.connect(self._load_cal)
         bottom.addWidget(self.btn_load)
 
@@ -1350,7 +1890,7 @@ class CalibrationDialog(QDialog):
         )
         return b
 
-    # ── Point management ──────────────────────────────────────────────────────────────
+    # ΓöÇΓöÇ Point management ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def _add_from_fit(self):
         """Pull the last Gaussian centroid from the spectrum panel."""
         ch = self._sp.get_last_fit_centroid()
@@ -1372,7 +1912,7 @@ class CalibrationDialog(QDialog):
         for col, val in enumerate([centroid_str, energy_str, ""]):
             item = QTableWidgetItem(val)
             item.setTextAlignment(Qt.AlignCenter)
-            if col == 2:  # residual — not editable
+            if col == 2:  # residual ΓÇö not editable
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 item.setForeground(QColor("#666"))
             self.cal_table.setItem(r, col, item)
@@ -1386,10 +1926,62 @@ class CalibrationDialog(QDialog):
 
     def _populate_from_existing(self):
         """If spectrum panel already has a calibration, pre-fill points."""
-        # No persistent state yet — dialog starts empty each time
+        # No persistent state yet ΓÇö dialog starts empty each time
         pass
 
-    # ── Calibration fit ───────────────────────────────────────────────────────────────
+    def _load_standard_source(self):
+        src = self.cmb_source.currentText()
+        if src == "Custom": return
+        lines = iso_module.BUILTIN_LIBRARY.get(src, [])
+        # Filter weak lines (< 5% intensity) if there are many lines
+        if len(lines) > 5:
+            lines = [L for L in lines if L[1] >= 4.0]
+        lines.sort(key=lambda x: x[0])
+        for eng, inten in lines:
+            self._add_row("", f"{eng:.3f}")
+
+    def _auto_match_peaks(self):
+        """Match the highest detected peaks from SpectrumPanel to the loaded empty energies."""
+        empty_rows = []
+        for r in range(self.cal_table.rowCount()):
+            ch_item = self.cal_table.item(r, 0)
+            en_item = self.cal_table.item(r, 1)
+            if not ch_item.text().strip() and en_item.text().strip():
+                try:
+                    empty_rows.append((r, float(en_item.text())))
+                except ValueError:
+                    pass
+        if not empty_rows:
+            QMessageBox.information(self, "No Empty Energies", "Load a Standard Source first, or ensure there are empty 'Centroid' cells.")
+            return
+
+        peaks = []
+        pt = self._sp.peak_table
+        for r in range(pt.rowCount()):
+            try:
+                ch_str = pt.item(r, 0).text().split()[0]
+                counts_str = pt.item(r, 1).text().replace(',', '')
+                peaks.append((float(ch_str), float(counts_str)))
+            except (ValueError, AttributeError):
+                pass
+
+        if not peaks:
+            QMessageBox.information(self, "No Peaks", "Run a Peak Search in the main dashboard first!")
+            return
+
+        if len(peaks) < len(empty_rows):
+            QMessageBox.warning(self, "Not Enough Peaks", f"Found {len(peaks)} peaks, but need {len(empty_rows)} to match.")
+
+        peaks.sort(key=lambda x: x[1], reverse=True)
+        top_peaks = peaks[:len(empty_rows)]
+        top_peaks.sort(key=lambda x: x[0])
+        
+        empty_rows.sort(key=lambda x: x[1])
+        for (row_idx, _), (centroid, _) in zip(empty_rows, top_peaks):
+            item = self.cal_table.item(row_idx, 0)
+            item.setText(f"{centroid:.3f}")
+
+    # ΓöÇΓöÇ Calibration fit ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def _collect_points(self):
         """Read centroid + energy from table. Returns (channels, energies) arrays."""
         chs, engs = [], []
@@ -1410,7 +2002,7 @@ class CalibrationDialog(QDialog):
         if len(ch_arr) < min_pts:
             QMessageBox.warning(
                 self, "Not enough points",
-                f"{deg}° polynomial needs at least {min_pts} points."
+                f"{deg}┬░ polynomial needs at least {min_pts} points."
             )
             return
 
@@ -1441,17 +2033,17 @@ class CalibrationDialog(QDialog):
         # Show equation
         if deg == 1:
             a, b = coeffs
-            eq = f"E = {a:.6g}·ch + {b:.6g} keV"
+            eq = f"E = {a:.6g}┬╖ch + {b:.6g} keV"
         else:
             a, b, c = coeffs
-            eq = f"E = {a:.4g}·ch² + {b:.6g}·ch + {c:.6g} keV"
+            eq = f"E = {a:.4g}┬╖ch┬▓ + {b:.6g}┬╖ch + {c:.6g} keV"
         self.lbl_equation.setText(eq)
         self.lbl_rms.setText(f"RMS: {rms:.4f} keV")
 
         self.btn_apply.setEnabled(True)
         self.btn_save.setEnabled(True)
 
-    # ── Apply / remove ─────────────────────────────────────────────────────────────────
+    # ΓöÇΓöÇ Apply / remove ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def _apply(self):
         if self._poly is None:
             return
@@ -1461,7 +2053,7 @@ class CalibrationDialog(QDialog):
     def _remove_cal(self):
         self._sp.remove_calibration()
 
-    # ── Save / load ────────────────────────────────────────────────────────────────────
+    # ΓöÇΓöÇ Save / load ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def _save_cal(self):
         if self._poly is None:
             return
@@ -1527,17 +2119,354 @@ class CalibrationDialog(QDialog):
 
 
 # ---------------------------------------------------------------------------
-# Main window — assembles all panels
+# 2D Scatter / Banana Gates
+# ---------------------------------------------------------------------------
+class Scatter2DPanel(QGroupBox):
+    def __init__(self, parent=None):
+        super().__init__("2D Scatter (E vs dE)")
+        self.setStyleSheet("""
+            QGroupBox { border:1px solid #252525; border-radius:6px; margin-top:8px; font-size:9pt; color:#555; }
+            QGroupBox::title { subcontrol-origin:margin; left:10px; padding:0 4px; }
+            QPushButton { color:#aaa; background:#1a1a1a; border:1px solid #333; border-radius:3px; padding:2px 8px; }
+            QPushButton:hover { background:#333; color:#fff; }
+        """)
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 15, 10, 10)
+        
+        tools = QHBoxLayout()
+        self.btn_gate = QPushButton("≡ƒìî Draw Banana Gate")
+        self.btn_gate.clicked.connect(self._start_draw_gate)
+        tools.addWidget(self.btn_gate)
+        
+        self.btn_clear_gate = QPushButton("🗑️ Clear Gates")
+        self.btn_clear_gate.clicked.connect(self._clear_gates)
+        tools.addWidget(self.btn_clear_gate)
+        
+        self.btn_load_z2d = QPushButton("📂 Load .z2d")
+        self.btn_load_z2d.clicked.connect(self._load_z2d)
+        tools.addWidget(self.btn_load_z2d)
+        
+        tools.addStretch()
+        self.lbl_gate_info = QLabel("")
+        self.lbl_gate_info.setStyleSheet("color:#ffcc00;")
+        tools.addWidget(self.lbl_gate_info)
+        layout.addLayout(tools)
+        
+        self.plot_widget = pg.PlotWidget()
+        self.plot_widget.setLabel('bottom', 'X Parameter')
+        self.plot_widget.setLabel('left', 'Y Parameter')
+        
+        self.img = pg.ImageItem()
+        self.plot_widget.addItem(self.img)
+        
+        cmap = pg.colormap.get('magma')
+        self.img.setLookupTable(cmap.getLookupTable())
+        
+        layout.addWidget(self.plot_widget)
+        
+        self._gates = []
+
+    def update_2d(self, hist2d):
+        if hist2d is None: return
+        log_hist = np.log1p(hist2d)
+        self.img.setImage(log_hist, autoLevels=False, levels=(0, log_hist.max()+1))
+
+    def _load_z2d(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Load .z2d Scatter", "", "Z2D files (*.z2d);;All files (*)")
+        if not path:
+            return
+        try:
+            sz = os.path.getsize(path)
+            with open(path, 'rb') as f:
+                data = np.frombuffer(f.read(), dtype=np.int32)
+                
+            dim = int(np.sqrt(len(data)))
+            if dim * dim == len(data):
+                hist2d = data.reshape((dim, dim))
+            else:
+                hist2d = data.reshape((256, len(data)//256))
+                
+            self.update_2d(hist2d.astype(np.float32))
+        except Exception as e:
+            QMessageBox.critical(self, "Load Failed", f"Could not load .z2d:\n{e}")
+
+    def _start_draw_gate(self):
+        roi = pg.PolyLineROI([[100, 100], [200, 100], [200, 200], [100, 200]], closed=True, pen=pg.mkPen('#ffcc00', width=2))
+        self.plot_widget.addItem(roi)
+        self._gates.append(roi)
+        self.btn_gate.setText("≡ƒìî Add Another Gate")
+        roi.sigRegionChanged.connect(self._on_gate_changed)
+        self._on_gate_changed()
+
+    def _clear_gates(self):
+        for roi in self._gates:
+            self.plot_widget.removeItem(roi)
+        self._gates.clear()
+        self.btn_gate.setText("≡ƒìî Draw Banana Gate")
+        self.lbl_gate_info.setText("")
+
+    def _on_gate_changed(self):
+        self.lbl_gate_info.setText(f"{len(self._gates)} gate(s) active.")
+
+# ---------------------------------------------------------------------------
+# Phase 9: Waterfall / 2D time-evolution heatmap
+# ---------------------------------------------------------------------------
+class WaterfallPanel(QGroupBox):
+    """
+    Rolling 2D spectrogram using pyqtgraph.ImageItem.
+
+    Stores the last ``HISTORY`` spectra in a circular buffer
+    (shape: HISTORY x MAX_CHANNELS).  Every call to ``push(spectrum)``
+    adds one row.  The colourmap follows CERN/CMS convention: inferno
+    (perceptually uniform, unambiguous for colour-blind users).
+
+    Axes:
+      X  ΓÇö  channel / energy  (same calibration as SpectrumPanel)
+      Y  ΓÇö  time  (0 = oldest, top = newest)
+    """
+    HISTORY = 200   # number of spectra to keep
+
+    def __init__(self):
+        super().__init__("Waterfall (Time Evolution)")
+        self._n_chan     = MAX_CHANNELS
+        self._buf        = np.zeros((self.HISTORY, MAX_CHANNELS), dtype=np.float32)
+        self._write_idx  = 0          # next row to overwrite
+        self._cal_poly   = None       # np.poly1d, set when calibrated
+        self._build()
+
+    # ΓöÇΓöÇ Build ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    def _build(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(4)
+
+        # Toolbar
+        toolbar = QHBoxLayout()
+
+        toolbar.addWidget(QLabel("History rows:"))
+        self.spin_history = QSpinBox()
+        self.spin_history.setRange(50, 1000)
+        self.spin_history.setValue(self.HISTORY)
+        self.spin_history.setFixedWidth(70)
+        self.spin_history.setStyleSheet(
+            "background:#1e1e1e; color:#eee; border:1px solid #333;"
+            "border-radius:4px; padding:2px 4px;"
+        )
+        self.spin_history.valueChanged.connect(self._resize_history)
+        toolbar.addWidget(self.spin_history)
+
+        toolbar.addSpacing(12)
+        toolbar.addWidget(QLabel("Colour scale:"))
+        self.cmb_cmap = QComboBox()
+        self.cmb_cmap.setFixedWidth(100)
+        self.cmb_cmap.addItems(["inferno", "viridis", "plasma", "magma"])
+        self.cmb_cmap.currentTextChanged.connect(self._apply_cmap)
+        toolbar.addWidget(self.cmb_cmap)
+
+        toolbar.addSpacing(12)
+        self.btn_clear = QPushButton("Clear")
+        self.btn_clear.setFixedWidth(56)
+        self.btn_clear.setStyleSheet(
+            "QPushButton{color:#aaa;background:#1e1e1e;border:1px solid #333;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
+            "QPushButton:hover{background:#2a2a2a;}"
+        )
+        self.btn_clear.clicked.connect(self._clear)
+        toolbar.addWidget(self.btn_clear)
+        toolbar.addStretch()
+        layout.addLayout(toolbar)
+
+        # Plot widget
+        self._pw = pg.PlotWidget(background="#0a0a0a")
+        self._pw.setLabel("left",   "Time step (oldest ΓåÆ newest)")
+        self._pw.setLabel("bottom", "Channel")
+        self._pw.showGrid(x=True, y=True, alpha=0.15)
+
+        self._img = pg.ImageItem()
+        self._pw.addItem(self._img)
+
+        # Colour bar
+        self._cbar = pg.ColorBarItem(
+            values=(0, 1), colorMap="inferno", label="Counts"
+        )
+        self._cbar.setImageItem(self._img, insert_in=self._pw.getPlotItem())
+
+        layout.addWidget(self._pw, stretch=1)
+
+        self._apply_cmap("inferno")
+
+    # ΓöÇΓöÇ Public API ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    def push(self, spectrum: np.ndarray):
+        """Add one spectrum row to the circular buffer and refresh the view."""
+        row = spectrum[:MAX_CHANNELS].astype(np.float32)
+        if len(row) < MAX_CHANNELS:
+            row = np.pad(row, (0, MAX_CHANNELS - len(row)))
+        self._buf[self._write_idx] = row
+        self._write_idx = (self._write_idx + 1) % len(self._buf)
+        self._refresh()
+
+    def set_calibration(self, cal_poly):
+        """Pass a calibrated np.poly1d so the x-axis shows keV."""
+        self._cal_poly = cal_poly
+        if cal_poly is not None:
+            self._pw.setLabel("bottom", "Energy (keV)")
+        else:
+            self._pw.setLabel("bottom", "Channel")
+
+    # ΓöÇΓöÇ Private ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    def _refresh(self):
+        # Reorder circular buffer so newest row is at the top
+        ordered = np.roll(self._buf, -self._write_idx, axis=0)
+        # Log-scale for better dynamic range (Compton background is huge)
+        safe = np.where(ordered > 0, ordered, 0.1)
+        display = np.log10(safe).T   # transpose: shape (channels, time)
+        self._img.setImage(display, autoLevels=True)
+
+    def _resize_history(self, n):
+        self.HISTORY = n
+        new_buf = np.zeros((n, MAX_CHANNELS), dtype=np.float32)
+        old_len = len(self._buf)
+        if old_len <= n:
+            new_buf[:old_len] = self._buf
+        else:
+            # Keep the most recent n rows
+            ordered = np.roll(self._buf, -self._write_idx, axis=0)
+            new_buf = ordered[-n:]
+        self._buf = new_buf
+        self._write_idx = 0
+
+    def _apply_cmap(self, name):
+        try:
+            self._img.setColorMap(name)
+            self._cbar.setColorMap(name)
+        except Exception:
+            pass   # old pyqtgraph versions may not support setColorMap on cbar
+
+    def _clear(self):
+        self._buf[:] = 0
+        self._write_idx = 0
+        self._refresh()
+
+
+# ---------------------------------------------------------------------------
+# Phase 8: Dead-Time Gauge widget
+# ---------------------------------------------------------------------------
+class DeadTimeGauge(QWidget):
+    """
+    Colour-coded progress bar showing DAQ dead time.
+
+    Thresholds follow IAEA and Knoll conventions:
+      0ΓÇô5 %   ΓåÆ green  (safe)
+      5ΓÇô20 %  ΓåÆ yellow (marginal)
+      20ΓÇô50 % ΓåÆ orange (caution)
+      >50 %   ΓåÆ red    (critical)
+    """
+    def __init__(self):
+        super().__init__()
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        lbl = QLabel("Dead Time:")
+        lbl.setStyleSheet("color:#888; font-size:9pt;")
+        lbl.setFixedWidth(80)
+        layout.addWidget(lbl)
+
+        self._bar = pg.PlotWidget(background="#111")
+        self._bar.setFixedHeight(22)
+        self._bar.setFixedWidth(200)
+        self._bar.setXRange(0, 100, padding=0)
+        self._bar.setYRange(0, 1,   padding=0)
+        self._bar.getPlotItem().hideAxis("left")
+        self._bar.getPlotItem().hideAxis("bottom")
+        self._bar.getPlotItem().setContentsMargins(0, 0, 0, 0)
+        self._fill = pg.BarGraphItem(x=[50], height=[1], width=[100],
+                                     brush="#1aff6e")
+        self._bar.addItem(self._fill)
+        layout.addWidget(self._bar)
+
+        self.lbl_pct = QLabel("ΓÇö")
+        self.lbl_pct.setStyleSheet("color:#eee; font-size:9pt; font-weight:bold;")
+        self.lbl_pct.setFixedWidth(52)
+        layout.addWidget(self.lbl_pct)
+
+        self._pile_toggle = QCheckBox("Pile-up corr.")
+        self._pile_toggle.setStyleSheet("color:#888; font-size:8pt;")
+        layout.addWidget(self._pile_toggle)
+
+        self._shaping_us = QDoubleSpinBox()
+        self._shaping_us.setRange(0.1, 100.0)
+        self._shaping_us.setValue(2.0)
+        self._shaping_us.setSuffix(" ┬╡s")
+        self._shaping_us.setFixedWidth(72)
+        self._shaping_us.setToolTip("Shaping time constant for pile-up correction")
+        self._shaping_us.setStyleSheet(
+            "background:#1e1e1e; color:#eee; border:1px solid #333;"
+            "border-radius:3px; padding:1px 3px; font-size:8pt;"
+        )
+        layout.addWidget(self._shaping_us)
+        layout.addStretch()
+
+    # ΓöÇΓöÇ Public API ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    def update_dead_time(self, bufs_acq, bufs_proc, ev_rate=None):
+        """
+        Compute and display dead time.
+
+        Parameters
+        ----------
+        bufs_acq, bufs_proc  : int or None  ΓÇö EPICS buffer counters
+        ev_rate              : float or None ΓÇö measured count rate (evt/s)
+        """
+        dt_pct = None
+        if bufs_acq is not None and bufs_proc is not None and bufs_acq > 0:
+            dt_pct = 100.0 * (bufs_acq - bufs_proc) / bufs_acq
+
+        if dt_pct is None:
+            self.lbl_pct.setText("ΓÇö")
+            self._fill.setOpts(x=[50], width=[0])
+            return
+
+        # Colour thresholds
+        if dt_pct < 5:
+            colour = "#1aff6e"
+        elif dt_pct < 20:
+            colour = "#ffcc00"
+        elif dt_pct < 50:
+            colour = "#ff8800"
+        else:
+            colour = "#ff3333"
+
+        self._fill.setOpts(
+            x=[dt_pct / 2], width=[dt_pct], brush=colour
+        )
+        self.lbl_pct.setText(f"{dt_pct:5.1f}%")
+        self.lbl_pct.setStyleSheet(f"color:{colour}; font-size:9pt; font-weight:bold;")
+
+        # Optionally display pile-up corrected rate
+        if (self._pile_toggle.isChecked() and ev_rate is not None
+                and ev_rate > 0):
+            tau_s = self._shaping_us.value() * 1e-6
+            corr  = ev_rate / max(1.0 - ev_rate * tau_s, 1e-6)
+            self.lbl_pct.setToolTip(
+                f"Pile-up corrected rate: {corr:,.0f} evt/s\n"
+                f"(shaping time = {self._shaping_us.value()} ┬╡s)"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Main window ΓÇö assembles all panels
 # ---------------------------------------------------------------------------
 class LampsDashboard(QMainWindow):
+
     def __init__(self, proxy: EpicsProxy,
                  sim: 'SimulatedBackend | None' = None):
         super().__init__()
         self._epics = proxy
         self._sim   = sim
-        self._rn_prefilled = False
+        self._rn_prefilled    = False
+        self._cmd_lockout_until = 0.0   # epoch seconds: ignore poller status until this time
         mode_str = "[SIM MODE]" if sim is not None else f"{proxy.prefix} @ {proxy.ioc}"
-        self.setWindowTitle(f"LAMPS Dashboard  —  {mode_str}")
+        self.setWindowTitle(f"LAMPS Dashboard  ΓÇö  {mode_str}")
         self.setMinimumSize(1100, 660)
         self._build_ui()
         self._apply_dark_theme()
@@ -1550,7 +2479,7 @@ class LampsDashboard(QMainWindow):
         root.setSpacing(8)
         root.setContentsMargins(12, 12, 12, 8)
 
-        # ── Top bar ─────────────────────────────────────────────────────────
+        # ΓöÇΓöÇ Top bar ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         top = QHBoxLayout()
         title = QLabel(
             f"<b>LAMPS DAQ</b>"
@@ -1568,7 +2497,7 @@ class LampsDashboard(QMainWindow):
         sep.setStyleSheet("color:#222;")
         root.addWidget(sep)
 
-        # ── Body ─────────────────────────────────────────────────────────────
+        # ΓöÇΓöÇ Body ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         body = QHBoxLayout(); body.setSpacing(10)
 
         # Left column: metrics + control
@@ -1586,8 +2515,12 @@ class LampsDashboard(QMainWindow):
         for m in [self.m_run_name, self.m_elapsed, self.m_total_ev,
                   self.m_event_rate, self.m_bufs_acq, self.m_bufs_proc]:
             ml.addWidget(m)
+        # Dead-time gauge (Phase 8)
+        self.dt_gauge = DeadTimeGauge()
+        ml.addSpacing(6)
+        ml.addWidget(self.dt_gauge)
         ml.addStretch()
-        self.lbl_ts = QLabel("—")
+        self.lbl_ts = QLabel("ΓÇö")
         self.lbl_ts.setStyleSheet("color:#333; font-size:8pt;")
         ml.addWidget(self.lbl_ts)
         left.addWidget(metrics_box)
@@ -1598,25 +2531,47 @@ class LampsDashboard(QMainWindow):
         left.addStretch()
         body.addLayout(left)
 
-        # Right column: spectrum panel (Phase 7.1 + 7.3)
+        # Right column: tab widget with Spectrum + Waterfall (Phases 7 & 9)
+        self._tabs = QTabWidget()
+        self._tabs.setStyleSheet(
+            "QTabWidget::pane{border:1px solid #222; border-radius:4px;}"
+            "QTabBar::tab{background:#1a1a1a; color:#777; padding:5px 16px;"
+            "border:1px solid #222; border-bottom:none; border-radius:4px 4px 0 0;}"
+            "QTabBar::tab:selected{background:#141414; color:#eee;}"
+            "QTabBar::tab:hover{color:#ccc;}"
+        )
+
         self.spec_panel = SpectrumPanel(self._epics)
-        body.addWidget(self.spec_panel, stretch=1)
+        self._tabs.addTab(self.spec_panel, "Spectrum")
+
+        self.scatter2d_panel = Scatter2DPanel()
+        self._tabs.addTab(self.scatter2d_panel, "2D Scatter")
+
+        self.waterfall_panel = WaterfallPanel()
+        self._tabs.addTab(self.waterfall_panel, "Waterfall")
+
+        _script_dir = os.path.dirname(os.path.abspath(__file__))
+        _setup_path = os.path.join(os.path.dirname(_script_dir), ".lamps_set")
+        self.setup_panel = config_editor.SetupPanel(_setup_path)
+        self._tabs.addTab(self.setup_panel, "ΓÜÖ Hardware Setup")
+
+        body.addWidget(self._tabs, stretch=1)
         root.addLayout(body)
 
-        # ── Bottom bar ───────────────────────────────────────────────────────
+        # ΓöÇΓöÇ Bottom bar ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         bot = QHBoxLayout()
-        self.lbl_conn = QLabel("● Connecting…")
+        self.lbl_conn = QLabel("ΓùÅ ConnectingΓÇª")
         self.lbl_conn.setStyleSheet("color:#333; font-size:8pt;")
         bot.addWidget(self.lbl_conn)
         bot.addStretch()
         if self._sim is not None:
-            epics_txt = "SIM MODE ● Co-60 ch512 | Cs-137 ch1024 | K-40 ch2048"
+            epics_txt = "SIM MODE ΓùÅ Co-60 ch512 | Cs-137 ch1024 | K-40 ch2048"
             epics_col = "#00d4ff"
         elif EPICS_AVAILABLE:
-            epics_txt = "pyepics ✓"
+            epics_txt = "pyepics Γ£ô"
             epics_col = "#1a8a3e"
         else:
-            epics_txt = "pyepics ✗ (sim fallback)"
+            epics_txt = "pyepics Γ£ù (sim fallback)"
             epics_col = "#884400"
         lbl_ep = QLabel(epics_txt)
         lbl_ep.setStyleSheet(f"color:{epics_col}; font-size:8pt;")
@@ -1648,6 +2603,7 @@ class LampsDashboard(QMainWindow):
         self._poller = EpicsPoller(self._epics, sim=self._sim, parent=self)
         self._poller.metrics_ready.connect(self._refresh_metrics)
         self._poller.spectrum_ready.connect(self._refresh_spectrum)
+        self._poller.twod_ready.connect(self.scatter2d_panel.update_2d)
         self._poller.start()
         # Optimistic UI update: react to button presses immediately
         self.ctrl.command_issued.connect(self._on_command_issued)
@@ -1658,42 +2614,54 @@ class LampsDashboard(QMainWindow):
         self._poller.wait(2000)
         super().closeEvent(event)
 
-    # ── Optimistic UI update — fired IMMEDIATELY on button click ────────────
+    # ΓöÇΓöÇ Optimistic UI update ΓÇö fired IMMEDIATELY on button click ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def _on_command_issued(self, cmd: str):
         """
         Called the instant the user presses START / STOP / RESET.
-        Does *not* wait for the EPICS CA round-trip or SHM update.
-        Gives the operator immediate visual feedback.
-
-        For live EPICS mode, the poller will later confirm (or correct) the
-        state once the bridge publishes updated PVs.
+        Sets a 2.5 s lockout so the poller cannot revert the badge
+        while the IOC is still processing the command.
         """
+        LOCKOUT_S = ControlPanel.LOCKOUT_MS / 1000.0
+        self._cmd_lockout_until = time.monotonic() + LOCKOUT_S
+
         if cmd == "STOP":
-            # Badge → STOPPED, disable STOP, enable START
-            self.status_badge.update("STOPPED")
+            self.status_badge.set_status("STOPPED")
             self.ctrl.update_from_status("STOPPED")
-            self.m_event_rate.set("—  (stopped)")
+            self.m_event_rate.set("(stopped)")
 
         elif cmd == "RESET":
-            # Badge → STOPPED, disable STOP, enable START
-            self.status_badge.update("STOPPED")
+            self.status_badge.set_status("STOPPED")
             self.ctrl.update_from_status("STOPPED")
-            # Clear spectrum immediately so operator sees empty plot
             self.spec_panel.update_spectrum(np.zeros(MAX_CHANNELS, dtype=np.float32))
-            self.m_total_ev.set("—")
-            self.m_event_rate.set("—")
-            self.m_elapsed.set("—")
-            self.m_bufs_acq.set("—")
-            self.m_bufs_proc.set("—")
+            self.m_total_ev.set("ΓÇö")
+            self.m_event_rate.set("ΓÇö")
+            self.m_elapsed.set("ΓÇö")
+            self.m_bufs_acq.set("ΓÇö")
+            self.m_bufs_proc.set("ΓÇö")
 
         elif cmd == "START":
             rn = self.ctrl.run_name_edit.text().strip()
-            # Badge → RUNNING, disable START, enable STOP
-            self.status_badge.update("RUNNING")
+            self.status_badge.set_status("RUNNING")
             self.ctrl.update_from_status("RUNNING")
-            self.m_run_name.set(rn or "—")
+            self.m_run_name.set(rn or "ΓÇö")
 
-    # ── Refresh slots — called via pyqtSignal from EpicsPoller (GUI-thread safe)
+        elif cmd.startswith("REPLAY:"):
+            path = cmd.split("REPLAY:")[1]
+            if hasattr(self, '_replay_backend'):
+                self._replay_backend.stop()
+            self._replay_backend = ZlsReplayBackend(path, n_par=16, speed_mult=10.0)
+            
+            twod_conf = self.setup_panel.config.twod_spectra[0] if self.setup_panel.config.twod_spectra else None
+            pseudo_conf = self.setup_panel.config.pseudo_params
+            self._replay_backend.set_config(twod_conf=twod_conf, pseudo_conf=pseudo_conf)
+            
+            self._poller._sim = self._replay_backend
+            self._replay_backend.start_replay()
+            self.status_badge.set_status("REPLAY")
+            self.ctrl.update_from_status("REPLAY")
+            self.ctrl._fb(f"Replaying: {os.path.basename(path)}", "#5588cc")
+
+    # ΓöÇΓöÇ Refresh slots ΓÇö called via pyqtSignal from EpicsPoller (GUI-thread safe)
     def _refresh_metrics(self, data: dict):
         status    = data.get('status',   '--')
         run_name  = data.get('run_name', '')
@@ -1703,8 +2671,13 @@ class LampsDashboard(QMainWindow):
         bufs_acq  = data.get('bufs_acq')
         bufs_proc = data.get('bufs_proc')
 
-        self.status_badge.update(status)
-        self.ctrl.update_from_status(status)
+        # ---- Lockout: skip badge/button updates for LOCKOUT_MS after any command ----
+        # This prevents the poller reading a stale EPICS status and reverting
+        # the optimistic UI update before the IOC has acknowledged the command.
+        locked = time.monotonic() < self._cmd_lockout_until
+        if not locked:
+            self.status_badge.set_status(status)
+            self.ctrl.update_from_status(status)
 
         if not self._rn_prefilled:
             rn = data.get('cmd_rn', '')
@@ -1712,30 +2685,33 @@ class LampsDashboard(QMainWindow):
                 self.ctrl.prefill_run_name(rn)
                 self._rn_prefilled = True
 
-        self.m_run_name.set(run_name or "—")
+        self.m_run_name.set(run_name or "ΓÇö")
         if elapsed is not None:
             h, m, s = int(elapsed)//3600, int(elapsed)%3600//60, int(elapsed)%60
             self.m_elapsed.set(f"{h:02d}:{m:02d}:{s:02d}")
         else:
-            self.m_elapsed.set("—")
-        self.m_total_ev.set(f"{int(total_ev):,}"       if total_ev  is not None else "—")
-        self.m_event_rate.set(f"{ev_rate:,.1f} evt/s"  if ev_rate   is not None else "—")
-        self.m_bufs_acq.set(str(int(bufs_acq))         if bufs_acq  is not None else "—")
-        self.m_bufs_proc.set(str(int(bufs_proc))       if bufs_proc is not None else "—")
+            self.m_elapsed.set("ΓÇö")
+        self.m_total_ev.set(f"{int(total_ev):,}"       if total_ev  is not None else "ΓÇö")
+        self.m_event_rate.set(f"{ev_rate:,.1f} evt/s"  if ev_rate   is not None else "ΓÇö")
+        self.m_bufs_acq.set(str(int(bufs_acq))         if bufs_acq  is not None else "ΓÇö")
+        self.m_bufs_proc.set(str(int(bufs_proc))       if bufs_proc is not None else "ΓÇö")
+
+        # Phase 8: update dead-time gauge
+        self.dt_gauge.update_dead_time(bufs_acq, bufs_proc, ev_rate=ev_rate)
 
         self.lbl_ts.setText(f"Updated: {time.strftime('%H:%M:%S')}")
         is_run = (status == "RUNNING")
         if self._sim is not None:
             self.lbl_conn.setText(
-                f"● SIM  run={data.get('run_name','') or 'none'}"
+                f"ΓùÅ SIM  run={data.get('run_name','') or 'none'}"
             )
             self.lbl_conn.setStyleSheet(
                 f"color:{'#1aff6e' if is_run else '#00d4ff'}; font-size:8pt;"
             )
         else:
             self.lbl_conn.setText(
-                f"● {self._epics.prefix} @ {self._epics.ioc}"
-                if EPICS_AVAILABLE else "● SIM (EPICS unavailable)"
+                f"ΓùÅ {self._epics.prefix} @ {self._epics.ioc}"
+                if EPICS_AVAILABLE else "ΓùÅ SIM (EPICS unavailable)"
             )
             self.lbl_conn.setStyleSheet(
                 f"color:{'#1aff6e' if is_run else '#555'}; font-size:8pt;"
@@ -1745,6 +2721,10 @@ class LampsDashboard(QMainWindow):
         # Keep poller's detector in sync with the combo box selection
         self._poller.set_detector(self.spec_panel.current_detector)
         self.spec_panel.update_spectrum(data)
+        # Phase 9: feed waterfall ΓÇö push only when tab is visible for performance
+        self.waterfall_panel.push(data)
+        # Sync calibration to waterfall
+        self.waterfall_panel.set_calibration(self.spec_panel._cal_poly)
 
 
 # ---------------------------------------------------------------------------
@@ -1752,7 +2732,7 @@ class LampsDashboard(QMainWindow):
 # ---------------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(
-        description="LAMPS Dashboard (Phase 7.1–7.6)",
+        description="LAMPS Dashboard (Phase 7.1ΓÇô7.6)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
@@ -1775,20 +2755,20 @@ def main():
 
     proxy = EpicsProxy(prefix=args.prefix, ioc=args.ioc)
 
-    # ── Decide whether to use sim backend ─────────────────────────────────────
+    # ΓöÇΓöÇ Decide whether to use sim backend ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     sim = None
     if args.sim:
         print("[INFO] --sim flag: using SimulatedBackend", flush=True)
         sim = SimulatedBackend()
     elif not EPICS_AVAILABLE:
-        print("[INFO] pyepics unavailable — using SimulatedBackend", flush=True)
+        print("[INFO] pyepics unavailable ΓÇö using SimulatedBackend", flush=True)
         sim = SimulatedBackend()
     else:
         # Auto-detect: probe the IOC for 1 s before falling back to sim
         print("[INFO] Probing EPICS IOC at", args.ioc, "...", flush=True)
         if not proxy.probe_connection(timeout=1.0):
             print(
-                "[INFO] IOC not reachable — falling back to SimulatedBackend.\n"
+                "[INFO] IOC not reachable ΓÇö falling back to SimulatedBackend.\n"
                 "       Start softIoc + lamps_epics_bridge for live data.",
                 flush=True
             )
