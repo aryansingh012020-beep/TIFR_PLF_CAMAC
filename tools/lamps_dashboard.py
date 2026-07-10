@@ -639,43 +639,82 @@ class _BackendLaunchWorker(QThread):
         self._src_dir = src_dir
 
     def run(self):
-        import subprocess, time, errno
+        import subprocess, time
         try:
-            # Step 1: LAMPS C GUI (creates shared memory)
+            # ── Step 1: LAMPS C GUI (creates the SHM segment) ────────────────
             self.step_update.emit("[1/4] Starting LAMPS (./lamps)...", "#aaa")
-            subprocess.Popen(["./lamps"],
-                             cwd=self._src_dir,
-                             stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL)
-            time.sleep(3)
+            subprocess.Popen(
+                ["./lamps"],
+                cwd=self._src_dir,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            time.sleep(3)   # give LAMPS time to create shared memory
 
-            # Step 2: EPICS IOC
+            # ── Step 2: EPICS IOC (softIoc) ───────────────────────────────────
             self.step_update.emit("[2/4] Starting EPICS IOC (src/run_ioc.sh)...", "#aaa")
-            subprocess.Popen(["./run_ioc.sh"],
-                             cwd=os.path.join(self._src_dir, "src"),
-                             stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL)
-            time.sleep(2)
+            ioc_script = os.path.join(self._src_dir, "src", "run_ioc.sh")
+            subprocess.Popen(
+                [ioc_script],
+                cwd=os.path.join(self._src_dir, "src"),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            time.sleep(2)   # give IOC time to load the db file
 
-            # Step 3: EPICS Bridge
+            # ── Step 3: EPICS Bridge ──────────────────────────────────────────
             self.step_update.emit("[3/4] Starting EPICS Bridge (run_bridge.sh)...", "#aaa")
-            subprocess.Popen(["./run_bridge.sh"],
-                             cwd=self._src_dir,
-                             stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL)
+            # Build the environment the bridge needs
+            bridge_env = os.environ.copy()
+            epics_base = bridge_env.get("EPICS_BASE",
+                                        os.path.expanduser("~/epics/base"))
+            epics_arch = bridge_env.get("EPICS_HOST_ARCH", "linux-x86_64")
+            lib_dir    = os.path.join(epics_base, "lib", epics_arch)
+            existing   = bridge_env.get("LD_LIBRARY_PATH", "")
+            bridge_env["LD_LIBRARY_PATH"] = (
+                f"{lib_dir}:{existing}" if existing else lib_dir
+            )
+            bridge_env.setdefault("EPICS_CA_ADDR_LIST",      "localhost")
+            bridge_env.setdefault("EPICS_CA_AUTO_ADDR_LIST", "YES")
 
-            # Step 4: CAMAC kernel driver — try pkexec first, fall back to sudo.
-            # pkexec requires a polkit policy; if not installed it returns EPERM.
-            # sudo -n works only if NOPASSWD is configured in sudoers.
-            # This step is BEST-EFFORT: if the driver is already loaded or
-            # neither launcher works, we warn but do NOT fail the whole launch.
+            p_bridge = subprocess.Popen(
+                [os.path.join(self._src_dir, "run_bridge.sh")],
+                cwd=self._src_dir,
+                env=bridge_env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,   # capture stderr for diagnostics
+                text=True,
+            )
+            # Wait 2 s then confirm the bridge is still alive (not crashed on start)
+            time.sleep(2)
+            poll = p_bridge.poll()
+            if poll is not None and poll != 0:
+                try:
+                    bridge_err = p_bridge.stderr.read(400).strip()
+                except Exception:
+                    bridge_err = ""
+                self.finished_launch.emit(
+                    False,
+                    f"Bridge failed (exit {poll}): {bridge_err or 'check run_bridge.sh'}"
+                )
+                return
+            # Bridge is running — release the stderr pipe
+            try:
+                p_bridge.stderr.close()
+            except Exception:
+                pass
+
+            # ── Step 4: CAMAC kernel driver (best-effort) ─────────────────────
+            # pkexec needs a polkit policy; sudo -n needs NOPASSWD in sudoers.
+            # If neither works the driver may already be loaded — we warn but
+            # do NOT block the rest of the backend from running.
             drv_path = os.path.join(self._src_dir, "ldcmc100")
-            loaded = False
+            loaded   = False
             last_err = ""
 
             for launcher, label in [
-                (["pkexec", drv_path],       "pkexec"),
-                (["sudo", "-n", drv_path],   "sudo -n"),
+                (["pkexec", drv_path],     "pkexec"),
+                (["sudo", "-n", drv_path], "sudo -n"),
             ]:
                 self.step_update.emit(
                     f"[4/4] Loading CAMAC driver ({label} ldcmc100)...", "#ffcc44"
@@ -684,46 +723,39 @@ class _BackendLaunchWorker(QThread):
                     p_drv = subprocess.Popen(
                         launcher,
                         cwd=self._src_dir,
-                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
                     )
                     try:
                         _, err = p_drv.communicate(timeout=25)
                     except subprocess.TimeoutExpired:
                         p_drv.kill()
-                        # Timeout might mean driver loaded OK (module insmod can be slow)
-                        loaded = True
+                        loaded = True   # insmod can be slow; assume success
                         break
-
                     if p_drv.returncode == 0:
                         loaded = True
                         break
-                    else:
-                        last_err = err.strip()[:120]
-                        continue   # try next launcher
-                except FileNotFoundError:
-                    continue
-                except PermissionError:
-                    continue
+                    last_err = err.strip()[:160]
+                except (FileNotFoundError, PermissionError):
+                    pass
 
             if loaded:
                 self.finished_launch.emit(True, "Backend stack running (driver loaded)")
             else:
-                # Driver load failed — report as WARNING, not hard failure.
-                # Steps 1-3 (LAMPS, IOC, bridge) may have started fine.
-                # The driver might already be loaded from a previous session.
-                warn_msg = (
-                    "Steps 1-3 (LAMPS, IOC, Bridge) were started.\n\n"
+                self.finished_launch.emit(
+                    True,   # success=True — steps 1-3 are fine
+                    "LAMPS + IOC + Bridge started.\n\n"
                     f"Driver load: {last_err or 'could not load automatically'}\n\n"
                     "If the CAMAC driver was already loaded, ignore this.\n"
-                    "Otherwise load it manually:\n"
-                    f"  sudo {drv_path}"
+                    f"Otherwise run:  sudo {drv_path}"
                 )
-                self.finished_launch.emit(True, warn_msg)   # success=True so LED goes green
 
         except FileNotFoundError as e:
             self.finished_launch.emit(False, f"Not found: {e.filename}")
         except Exception as e:
             self.finished_launch.emit(False, f"Error: {e}")
+
 
 
 class ControlPanel(QGroupBox):
