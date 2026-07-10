@@ -974,7 +974,6 @@ class SpectrumPanel(QGroupBox):
 
         self.btn_log = QPushButton("Log Y")
         self.btn_log.setCheckable(True)
-        self.btn_log.setFixedWidth(60)
         self.btn_log.setStyleSheet(
             "QPushButton{color:#aaa;background:#1e1e1e;border:1px solid #333;"
             "border-radius:4px;padding:2px 6px;font-size:9pt;}"
@@ -984,7 +983,6 @@ class SpectrumPanel(QGroupBox):
         row1.addWidget(self.btn_log)
 
         self.btn_auto = QPushButton("Auto")
-        self.btn_auto.setFixedWidth(64)
         self.btn_auto.setStyleSheet(
             "QPushButton{color:#aaa;background:#1e1e1e;border:1px solid #333;"
             "border-radius:4px;padding:2px 6px;font-size:9pt;}"
@@ -995,7 +993,6 @@ class SpectrumPanel(QGroupBox):
 
         # Phase 7.6: Calibration button
         self.btn_cal = QPushButton("Calibrate")
-        self.btn_cal.setFixedWidth(90)
         self.btn_cal.setStyleSheet(
             "QPushButton{color:#bb88ff;background:#1a0d2a;border:1px solid #553388;"
             "border-radius:4px;padding:2px 6px;font-size:9pt;}"
@@ -1029,7 +1026,6 @@ class SpectrumPanel(QGroupBox):
         
         # Phase 2: Export buttons
         self.btn_export_spe = QPushButton("SPE")
-        self.btn_export_spe.setFixedWidth(64)
         self.btn_export_spe.setStyleSheet(
             "QPushButton{color:#aaddff;background:#0d1a26;border:1px solid #336699;"
             "border-radius:4px;padding:2px 6px;font-size:9pt;}"
@@ -1039,7 +1035,6 @@ class SpectrumPanel(QGroupBox):
         row2.addWidget(self.btn_export_spe)
 
         self.btn_export_csv = QPushButton("CSV")
-        self.btn_export_csv.setFixedWidth(64)
         self.btn_export_csv.setStyleSheet(
             "QPushButton{color:#aaddff;background:#0d1a26;border:1px solid #336699;"
             "border-radius:4px;padding:2px 6px;font-size:9pt;}"
@@ -1052,7 +1047,6 @@ class SpectrumPanel(QGroupBox):
 
         # -- Offline CSV Viewer --
         self.btn_load_csv = QPushButton("Load CSV")
-        self.btn_load_csv.setFixedWidth(80)
         self.btn_load_csv.setStyleSheet(
             "QPushButton{color:#aaffaa;background:#0d261a;border:1px solid #339966;"
             "border-radius:4px;padding:2px 6px;font-size:9pt;}"
@@ -1062,7 +1056,6 @@ class SpectrumPanel(QGroupBox):
         row2.addWidget(self.btn_load_csv)
         
         self.btn_load_z1d = QPushButton("Load .z1d")
-        self.btn_load_z1d.setFixedWidth(80)
         self.btn_load_z1d.setStyleSheet(
             "QPushButton{color:#aaffaa;background:#0d261a;border:1px solid #339966;"
             "border-radius:4px;padding:2px 6px;font-size:9pt;}"
@@ -1072,7 +1065,6 @@ class SpectrumPanel(QGroupBox):
         row2.addWidget(self.btn_load_z1d)
 
         self.btn_resume_live = QPushButton("Resume Live")
-        self.btn_resume_live.setFixedWidth(90)
         self.btn_resume_live.setStyleSheet(
             "QPushButton{color:#ffaaaa;background:#260d0d;border:1px solid #993333;"
             "border-radius:4px;padding:2px 6px;font-size:9pt;font-weight:bold;}"
