@@ -960,7 +960,7 @@ class SpectrumPanel(QGroupBox):
         layout = QVBoxLayout(self)
         layout.setSpacing(6)
 
-        # -- Toolbar row 1: detector + scale + autorange -----------------
+        # -- Toolbar row 1: detector + scale + autorange + cursor stats --
         row1 = QHBoxLayout()
 
         row1.addWidget(QLabel("Detector:"))
@@ -1010,61 +1010,6 @@ class SpectrumPanel(QGroupBox):
             "color:#bb88ff; font-size:8pt; font-style:italic;"
         )
         row1.addWidget(self.lbl_cal_active)
-        
-        row1.addSpacing(16)
-        
-        # Phase 2: Export buttons
-        self.btn_export_spe = QPushButton("SPE")
-        self.btn_export_spe.setFixedWidth(64)
-        self.btn_export_spe.setStyleSheet(
-            "QPushButton{color:#aaddff;background:#0d1a26;border:1px solid #336699;"
-            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
-            "QPushButton:hover{background:#132639;border-color:#aaddff;}"
-        )
-        self.btn_export_spe.clicked.connect(self._export_spe)
-        row1.addWidget(self.btn_export_spe)
-
-        self.btn_export_csv = QPushButton("CSV")
-        self.btn_export_csv.setFixedWidth(64)
-        self.btn_export_csv.setStyleSheet(
-            "QPushButton{color:#aaddff;background:#0d1a26;border:1px solid #336699;"
-            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
-            "QPushButton:hover{background:#132639;border-color:#aaddff;}"
-        )
-        self.btn_export_csv.clicked.connect(self._export_csv)
-        row1.addWidget(self.btn_export_csv)
-
-        # -- Offline CSV Viewer --
-        self.btn_load_csv = QPushButton("Load CSV")
-        self.btn_load_csv.setFixedWidth(80)
-        self.btn_load_csv.setStyleSheet(
-            "QPushButton{color:#aaffaa;background:#0d261a;border:1px solid #339966;"
-            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
-            "QPushButton:hover{background:#133926;border-color:#aaffaa;}"
-        )
-        self.btn_load_csv.clicked.connect(self._load_csv)
-        row1.addWidget(self.btn_load_csv)
-        
-        self.btn_load_z1d = QPushButton("Load .z1d")
-        self.btn_load_z1d.setFixedWidth(80)
-        self.btn_load_z1d.setStyleSheet(
-            "QPushButton{color:#aaffaa;background:#0d261a;border:1px solid #339966;"
-            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
-            "QPushButton:hover{background:#133926;border-color:#aaffaa;}"
-        )
-        self.btn_load_z1d.clicked.connect(self._load_z1d)
-        row1.addWidget(self.btn_load_z1d)
-
-        self.btn_resume_live = QPushButton("Resume Live")
-        self.btn_resume_live.setFixedWidth(90)
-        self.btn_resume_live.setStyleSheet(
-            "QPushButton{color:#ffaaaa;background:#260d0d;border:1px solid #993333;"
-            "border-radius:4px;padding:2px 6px;font-size:9pt;font-weight:bold;}"
-            "QPushButton:hover{background:#391313;border-color:#ffaaaa;}"
-        )
-        self.btn_resume_live.clicked.connect(self._resume_live)
-        self.btn_resume_live.setVisible(False)
-        row1.addWidget(self.btn_resume_live)
 
         row1.addStretch()
 
@@ -1078,6 +1023,67 @@ class SpectrumPanel(QGroupBox):
         self.lbl_peak.setStyleSheet("color:#777; font-size:9pt;")
         row1.addWidget(self.lbl_peak)
         layout.addLayout(row1)
+
+        # -- Toolbar row 2: File imports / exports / offline --
+        row2 = QHBoxLayout()
+        
+        # Phase 2: Export buttons
+        self.btn_export_spe = QPushButton("SPE")
+        self.btn_export_spe.setFixedWidth(64)
+        self.btn_export_spe.setStyleSheet(
+            "QPushButton{color:#aaddff;background:#0d1a26;border:1px solid #336699;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
+            "QPushButton:hover{background:#132639;border-color:#aaddff;}"
+        )
+        self.btn_export_spe.clicked.connect(self._export_spe)
+        row2.addWidget(self.btn_export_spe)
+
+        self.btn_export_csv = QPushButton("CSV")
+        self.btn_export_csv.setFixedWidth(64)
+        self.btn_export_csv.setStyleSheet(
+            "QPushButton{color:#aaddff;background:#0d1a26;border:1px solid #336699;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
+            "QPushButton:hover{background:#132639;border-color:#aaddff;}"
+        )
+        self.btn_export_csv.clicked.connect(self._export_csv)
+        row2.addWidget(self.btn_export_csv)
+
+        row2.addSpacing(16)
+
+        # -- Offline CSV Viewer --
+        self.btn_load_csv = QPushButton("Load CSV")
+        self.btn_load_csv.setFixedWidth(80)
+        self.btn_load_csv.setStyleSheet(
+            "QPushButton{color:#aaffaa;background:#0d261a;border:1px solid #339966;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
+            "QPushButton:hover{background:#133926;border-color:#aaffaa;}"
+        )
+        self.btn_load_csv.clicked.connect(self._load_csv)
+        row2.addWidget(self.btn_load_csv)
+        
+        self.btn_load_z1d = QPushButton("Load .z1d")
+        self.btn_load_z1d.setFixedWidth(80)
+        self.btn_load_z1d.setStyleSheet(
+            "QPushButton{color:#aaffaa;background:#0d261a;border:1px solid #339966;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;}"
+            "QPushButton:hover{background:#133926;border-color:#aaffaa;}"
+        )
+        self.btn_load_z1d.clicked.connect(self._load_z1d)
+        row2.addWidget(self.btn_load_z1d)
+
+        self.btn_resume_live = QPushButton("Resume Live")
+        self.btn_resume_live.setFixedWidth(90)
+        self.btn_resume_live.setStyleSheet(
+            "QPushButton{color:#ffaaaa;background:#260d0d;border:1px solid #993333;"
+            "border-radius:4px;padding:2px 6px;font-size:9pt;font-weight:bold;}"
+            "QPushButton:hover{background:#391313;border-color:#ffaaaa;}"
+        )
+        self.btn_resume_live.clicked.connect(self._resume_live)
+        self.btn_resume_live.setVisible(False)
+        row2.addWidget(self.btn_resume_live)
+
+        row2.addStretch()
+        layout.addLayout(row2)
 
         # -- Plot widget -------------------------------------------------
         pg.setConfigOption("background", "#0d0d0d")
