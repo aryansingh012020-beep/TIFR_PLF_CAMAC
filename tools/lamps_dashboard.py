@@ -1201,12 +1201,14 @@ class SpectrumPanel(QGroupBox):
         self.plot.showGrid(x=True, y=True, alpha=0.15)
         self.plot.getPlotItem().setMenuEnabled(False)
 
-        # Spectrum curve - PyQtGraph 0.13+: stepMode requires len(x)==len(y)
+        # Spectrum curve — plain step plot.
+        # Do NOT use stepMode="left": it shifts every bar 1 channel to the
+        # left (bin i is drawn at x[i-1]) causing the x-axis to go negative
+        # and counts to appear in the wrong channel.
         self.curve = self.plot.plot(
             np.arange(MAX_CHANNELS, dtype=np.float32),
             np.zeros(MAX_CHANNELS, dtype=np.float32),
             pen=pg.mkPen("#00d4ff", width=1),
-            stepMode="left"
         )
 
         # -- Phase 7.3: ROI (LinearRegionItem) --------------------------
@@ -1456,9 +1458,16 @@ class SpectrumPanel(QGroupBox):
         self.plot.setLogMode(y=checked)
         self.btn_log.setText("Lin Y" if checked else "Log Y")
 
-    # -- Slot: auto-range ----------------------------------------------------
+    # -- Slot: auto-range (Y only — never shift the channel axis) ----------
     def _auto_range(self):
-        self.plot.autoRange()
+        """Fit Y axis to the visible data. X axis is intentionally left alone
+        so clicking Auto never appears to change the channel/detector view."""
+        data = self._data
+        if data is not None and data.any():
+            y_max = float(np.max(data))
+            self.plot.setYRange(0, y_max * 1.05, padding=0)
+        else:
+            self.plot.setYRange(0, 100, padding=0)
 
     # -- Slot: ROI visibility -------------------------------------------------
     def _toggle_roi(self, visible: bool):
@@ -1810,21 +1819,20 @@ class SpectrumPanel(QGroupBox):
             QMessageBox.critical(self, "Load Failed", f"Could not parse CSV:\n{e}")
 
     def _load_z1d(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Load .z1d Spectrum", "", "Z1D files (*.z1d);;All files (*)")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load .z1d Spectrum", "", "Z1D files (*.z1d);;All files (*)"
+        )
         if not path:
             return
         try:
-            sz = os.path.getsize(path)
-            with open(path, 'rb') as f:
-                if sz % 4 == 0 and sz >= MAX_CHANNELS * 4:
-                    data = np.frombuffer(f.read(), dtype=np.int32)
-                else:
-                    data = np.frombuffer(f.read(), dtype=np.int16)
-            
+            raw = np.fromfile(path, dtype=np.int32)   # LAMPS z1d = raw int32 array
+            # Clip negatives (wrap-around from unsigned storage in some versions)
+            raw = np.maximum(raw, 0).astype(np.float32)
+
             spec = np.zeros(MAX_CHANNELS, dtype=np.float32)
-            length = min(len(data), MAX_CHANNELS)
-            spec[:length] = data[:length]
-            
+            length = min(len(raw), MAX_CHANNELS)
+            spec[:length] = raw[:length]
+
             self._offline_mode = True
             self.btn_resume_live.setVisible(True)
             self.btn_load_csv.setVisible(False)
