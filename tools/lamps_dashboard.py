@@ -739,24 +739,31 @@ class ControlPanel(QGroupBox):
     LOCKOUT_MS       = 2500   # suppress poller overrides after a command
 
     def __init__(self, epics_proxy: EpicsProxy,
-                 sim: 'SimulatedBackend | None' = None):
+                 sim: 'SimulatedBackend | None' = None,
+                 force_sim: bool = False):
         super().__init__("Run Control")
-        self._epics = epics_proxy
-        self._sim   = sim
+        self._epics     = epics_proxy
+        self._sim       = sim
+        self._force_sim = force_sim
         self._prefilled = False
         self._workers   = []    # keep worker references alive
         self._debounce_timer = QTimer(self)
         self._debounce_timer.setSingleShot(True)
         self._debounce_timer.setInterval(self.DEBOUNCE_MS)
         self._build()
-        # In sim mode the real backend stack is not needed
-        if sim is not None:
+        # Disable LAUNCH BACKEND only when --sim was explicitly passed.
+        # In auto-fallback mode (IOC unreachable) it must stay enabled so
+        # the user can click it to actually start the backend.
+        if force_sim:
             self.btn_load_driver.setEnabled(False)
             self.btn_load_driver.setToolTip(
-                "LAUNCH BACKEND is disabled in simulation mode.\n"
-                "Start the dashboard without --sim to launch the real backend."
+                "LAUNCH BACKEND is disabled in forced simulation mode (--sim).\n"
+                "Remove --sim to enable the real backend launcher."
             )
             self._set_driver_led("SIM", "#00d4ff")
+        elif sim is not None:
+            # Auto-fallback: backend not running yet, button stays enabled.
+            self._set_driver_led("OFFLINE", "#ff4444")
 
     def _build(self):
         layout = QVBoxLayout(self)
@@ -2591,13 +2598,20 @@ class DeadTimeGauge(QWidget):
 class LampsDashboard(QMainWindow):
 
     def __init__(self, proxy: EpicsProxy,
-                 sim: 'SimulatedBackend | None' = None):
+                 sim: 'SimulatedBackend | None' = None,
+                 force_sim: bool = False):
         super().__init__()
-        self._epics = proxy
-        self._sim   = sim
+        self._epics     = proxy
+        self._sim       = sim
+        self._force_sim = force_sim   # True only when --sim was explicitly passed
         self._rn_prefilled    = False
         self._cmd_lockout_until = 0.0   # epoch seconds: ignore poller status until this time
-        mode_str = "[SIM MODE]" if sim is not None else f"{proxy.prefix} @ {proxy.ioc}"
+        if force_sim:
+            mode_str = "[SIM MODE]"
+        elif sim is not None:
+            mode_str = f"[AUTO-SIM]  {proxy.prefix} @ {proxy.ioc}"
+        else:
+            mode_str = f"{proxy.prefix} @ {proxy.ioc}"
         self.setWindowTitle(f"LAMPS Dashboard  -  {mode_str}")
         self.setMinimumSize(1100, 660)
         self._build_ui()
@@ -2657,7 +2671,7 @@ class LampsDashboard(QMainWindow):
         ml.addWidget(self.lbl_ts)
         left.addWidget(metrics_box)
 
-        self.ctrl = ControlPanel(self._epics, sim=self._sim)
+        self.ctrl = ControlPanel(self._epics, sim=self._sim, force_sim=self._force_sim)
         self.ctrl.setFixedWidth(270)
         left.addWidget(self.ctrl)
         left.addStretch()
@@ -2908,7 +2922,7 @@ def main():
         else:
             print("[INFO] EPICS IOC connected.", flush=True)
 
-    window = LampsDashboard(proxy, sim=sim)
+    window = LampsDashboard(proxy, sim=sim, force_sim=args.sim)
     window.show()
     sys.exit(app.exec_())
 
