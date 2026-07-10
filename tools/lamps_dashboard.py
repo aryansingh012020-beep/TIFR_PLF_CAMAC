@@ -639,7 +639,7 @@ class _BackendLaunchWorker(QThread):
         self._src_dir = src_dir
 
     def run(self):
-        import subprocess, time
+        import subprocess, time, errno
         try:
             # Step 1: LAMPS C GUI (creates shared memory)
             self.step_update.emit("[1/4] Starting LAMPS (./lamps)...", "#aaa")
@@ -664,24 +664,60 @@ class _BackendLaunchWorker(QThread):
                              stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL)
 
-            # Step 4: CAMAC kernel driver (needs root via pkexec)
-            self.step_update.emit("[4/4] Loading CAMAC driver (pkexec ldcmc100)...", "#ffcc44")
-            p_drv = subprocess.Popen(
-                ["pkexec", os.path.join(self._src_dir, "ldcmc100")],
-                cwd=self._src_dir,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-            )
-            try:
-                _, err = p_drv.communicate(timeout=25)
-            except subprocess.TimeoutExpired:
-                p_drv.kill()
-                self.finished_launch.emit(False, "Driver timed out after 25 s")
-                return
-            if p_drv.returncode != 0:
-                self.finished_launch.emit(False, f"Driver failed: {err.strip()[:120]}")
-                return
+            # Step 4: CAMAC kernel driver — try pkexec first, fall back to sudo.
+            # pkexec requires a polkit policy; if not installed it returns EPERM.
+            # sudo works on machines where the user is in the sudoers group.
+            drv_path = os.path.join(self._src_dir, "ldcmc100")
+            loaded = False
+            last_err = ""
 
-            self.finished_launch.emit(True, "Backend stack running")
+            for launcher, label in [
+                (["pkexec", drv_path],       "pkexec"),
+                (["sudo", "-n", drv_path],   "sudo -n"),
+            ]:
+                self.step_update.emit(
+                    f"[4/4] Loading CAMAC driver ({label} ldcmc100)...", "#ffcc44"
+                )
+                try:
+                    p_drv = subprocess.Popen(
+                        launcher,
+                        cwd=self._src_dir,
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                    )
+                    try:
+                        _, err = p_drv.communicate(timeout=25)
+                    except subprocess.TimeoutExpired:
+                        p_drv.kill()
+                        self.finished_launch.emit(False, "Driver timed out after 25 s")
+                        return
+
+                    if p_drv.returncode == 0:
+                        loaded = True
+                        break
+                    else:
+                        last_err = err.strip()[:120]
+                        # EPERM (1) from pkexec = no polkit policy → try sudo
+                        if p_drv.returncode == 1 and "not permitted" in last_err.lower():
+                            continue
+                        # Any other non-zero exit from sudo → report directly
+                        break
+                except FileNotFoundError:
+                    # launcher binary not found, try next
+                    continue
+                except PermissionError:
+                    continue
+
+            if loaded:
+                self.finished_launch.emit(True, "Backend stack running")
+            else:
+                manual = (
+                    f"{last_err}\n\n"
+                    "Both pkexec and sudo failed.\n"
+                    "Load the driver manually in a terminal:\n"
+                    f"  sudo {drv_path}"
+                )
+                self.finished_launch.emit(False, manual)
+
         except FileNotFoundError as e:
             self.finished_launch.emit(False, f"Not found: {e.filename}")
         except Exception as e:
@@ -713,6 +749,14 @@ class ControlPanel(QGroupBox):
         self._debounce_timer.setSingleShot(True)
         self._debounce_timer.setInterval(self.DEBOUNCE_MS)
         self._build()
+        # In sim mode the real backend stack is not needed
+        if sim is not None:
+            self.btn_load_driver.setEnabled(False)
+            self.btn_load_driver.setToolTip(
+                "LAUNCH BACKEND is disabled in simulation mode.\n"
+                "Start the dashboard without --sim to launch the real backend."
+            )
+            self._set_driver_led("SIM", "#00d4ff")
 
     def _build(self):
         layout = QVBoxLayout(self)
@@ -890,17 +934,21 @@ class ControlPanel(QGroupBox):
         self._set_driver_led("BUSY", "#ffcc44")
 
     def _on_launch_done(self, ok: bool, msg: str):
-        self.btn_load_driver.setEnabled(True)
+        # Re-enable only if not in sim mode
+        if self._sim is None:
+            self.btn_load_driver.setEnabled(True)
         if ok:
             self._set_driver_led("RUNNING", "#1aff6e")
             self._fb(msg, "#1aff6e")
         else:
             self._set_driver_led("FAILED", "#ff4444")
-            self._fb(f"Failed: {msg}", "#ff4444")
+            self._fb(f"Failed: {msg[:60]}", "#ff4444")
             QMessageBox.critical(
                 self, "Backend Launch Failed",
-                f"{msg}\n\nCheck that lamps, ldcmc100, run_ioc.sh and run_bridge.sh "
-                "are present in the repo root and that pkexec is configured."
+                f"{msg}\n\nEnsure lamps, ldcmc100, run_ioc.sh and run_bridge.sh "
+                "are present in the repo root.\n"
+                "If the driver load fails, run manually:\n"
+                "  sudo ./ldcmc100"
             )
 
     def _set_driver_led(self, state: str, colour: str):
