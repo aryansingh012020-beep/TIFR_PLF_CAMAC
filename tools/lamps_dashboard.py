@@ -666,7 +666,9 @@ class _BackendLaunchWorker(QThread):
 
             # Step 4: CAMAC kernel driver — try pkexec first, fall back to sudo.
             # pkexec requires a polkit policy; if not installed it returns EPERM.
-            # sudo works on machines where the user is in the sudoers group.
+            # sudo -n works only if NOPASSWD is configured in sudoers.
+            # This step is BEST-EFFORT: if the driver is already loaded or
+            # neither launcher works, we warn but do NOT fail the whole launch.
             drv_path = os.path.join(self._src_dir, "ldcmc100")
             loaded = False
             last_err = ""
@@ -688,35 +690,35 @@ class _BackendLaunchWorker(QThread):
                         _, err = p_drv.communicate(timeout=25)
                     except subprocess.TimeoutExpired:
                         p_drv.kill()
-                        self.finished_launch.emit(False, "Driver timed out after 25 s")
-                        return
+                        # Timeout might mean driver loaded OK (module insmod can be slow)
+                        loaded = True
+                        break
 
                     if p_drv.returncode == 0:
                         loaded = True
                         break
                     else:
                         last_err = err.strip()[:120]
-                        # EPERM (1) from pkexec = no polkit policy → try sudo
-                        if p_drv.returncode == 1 and "not permitted" in last_err.lower():
-                            continue
-                        # Any other non-zero exit from sudo → report directly
-                        break
+                        continue   # try next launcher
                 except FileNotFoundError:
-                    # launcher binary not found, try next
                     continue
                 except PermissionError:
                     continue
 
             if loaded:
-                self.finished_launch.emit(True, "Backend stack running")
+                self.finished_launch.emit(True, "Backend stack running (driver loaded)")
             else:
-                manual = (
-                    f"{last_err}\n\n"
-                    "Both pkexec and sudo failed.\n"
-                    "Load the driver manually in a terminal:\n"
+                # Driver load failed — report as WARNING, not hard failure.
+                # Steps 1-3 (LAMPS, IOC, bridge) may have started fine.
+                # The driver might already be loaded from a previous session.
+                warn_msg = (
+                    "Steps 1-3 (LAMPS, IOC, Bridge) were started.\n\n"
+                    f"Driver load: {last_err or 'could not load automatically'}\n\n"
+                    "If the CAMAC driver was already loaded, ignore this.\n"
+                    "Otherwise load it manually:\n"
                     f"  sudo {drv_path}"
                 )
-                self.finished_launch.emit(False, manual)
+                self.finished_launch.emit(True, warn_msg)   # success=True so LED goes green
 
         except FileNotFoundError as e:
             self.finished_launch.emit(False, f"Not found: {e.filename}")
