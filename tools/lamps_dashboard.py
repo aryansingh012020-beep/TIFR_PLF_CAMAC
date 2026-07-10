@@ -733,26 +733,41 @@ class ControlPanel(QGroupBox):
         rn_row.addWidget(self.run_name_edit)
         layout.addLayout(rn_row)
 
-        btn_row = QHBoxLayout(); btn_row.setSpacing(8)
+        # Row 1: START and STOP
+        row1 = QHBoxLayout(); row1.setSpacing(8)
         self.btn_start = self._btn("START",  "#00aa44", "#003318")
         self.btn_stop  = self._btn("STOP",   "#cc3300", "#330d00")
-        self.btn_reset = self._btn("RESET",  "#aa6600", "#2a1800")
-        self.btn_load_driver = self._btn("LAUNCH BACKEND", "#00d8ff", "#002b33")
-        self.btn_replay = self._btn("REPLAY .zls", "#5588cc", "#001122")
         self.btn_start.clicked.connect(self._do_start)
         self.btn_stop.clicked.connect(self._do_stop)
+        row1.addWidget(self.btn_start)
+        row1.addWidget(self.btn_stop)
+        layout.addLayout(row1)
+
+        # Row 2: RESET and REPLAY .zls
+        row2 = QHBoxLayout(); row2.setSpacing(8)
+        self.btn_reset = self._btn("RESET",  "#aa6600", "#2a1800")
+        self.btn_replay = self._btn("REPLAY .zls", "#5588cc", "#001122")
         self.btn_reset.clicked.connect(self._do_reset)
-        self.btn_load_driver.clicked.connect(self._do_load_driver)
         self.btn_replay.clicked.connect(self._do_replay)
-        for b in [self.btn_start, self.btn_stop, self.btn_reset, self.btn_load_driver, self.btn_replay]:
-            btn_row.addWidget(b)
-        
-        # * LED indicator for backend launch state
+        row2.addWidget(self.btn_reset)
+        row2.addWidget(self.btn_replay)
+        layout.addLayout(row2)
+
+        # Row 3: LAUNCH BACKEND (full width)
+        self.btn_load_driver = self._btn("LAUNCH BACKEND", "#00d8ff", "#002b33")
+        self.btn_load_driver.clicked.connect(self._do_load_driver)
+        layout.addWidget(self.btn_load_driver)
+
+        # Row 4: Backend Status Indicator
+        status_row = QHBoxLayout(); status_row.setSpacing(6)
+        status_lbl = QLabel("Backend Status:")
+        status_lbl.setStyleSheet("color:#888; font-size:9pt;")
         self.lbl_driver_led = QLabel("* IDLE")
-        self.lbl_driver_led.setStyleSheet("color:#333; font-size:9pt; font-family:monospace;")
-        btn_row.addSpacing(6)
-        btn_row.addWidget(self.lbl_driver_led)
-        layout.addLayout(btn_row)
+        self.lbl_driver_led.setStyleSheet("color:#333; font-size:9pt; font-family:monospace; font-weight:bold;")
+        status_row.addWidget(status_lbl)
+        status_row.addWidget(self.lbl_driver_led)
+        status_row.addStretch()
+        layout.addLayout(status_row)
 
         self.lbl_fb = QLabel("")
         self.lbl_fb.setStyleSheet("color:#666; font-size:8pt;")
