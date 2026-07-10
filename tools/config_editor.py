@@ -268,7 +268,7 @@ class SetupPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         
-        # ── File path bar ──────────────────────────────────────────────────
+        # -- File path bar --------------------------------------------------
         file_bar = QHBoxLayout()
         file_bar.addWidget(QLabel("Setup File:"))
         self.lbl_filepath = QLineEdit(self.config_file)
@@ -278,7 +278,7 @@ class SetupPanel(QWidget):
             "border-radius:3px; padding:2px 6px; font-size:8pt; font-family:monospace;"
         )
         file_bar.addWidget(self.lbl_filepath, stretch=1)
-        btn_open = QPushButton("📂 Load Setup File…")
+        btn_open = QPushButton("Load Setup File...")
         btn_open.setFixedWidth(150)
         btn_open.setStyleSheet(
             "QPushButton { background:#1a2a1a; color:#aaffaa; border:1px solid #339966;"
@@ -289,12 +289,12 @@ class SetupPanel(QWidget):
         file_bar.addWidget(btn_open)
         layout.addLayout(file_bar)
         
-        # ── Status label (shown when file not yet loaded) ──────────────────
+        # -- Status label (shown when file not yet loaded) ------------------
         self.lbl_status = QLabel()
         if not self.loaded:
             self.lbl_status.setText(
-                "⚠  No .lamps_set found at the default path. "
-                "Use 'Load Setup File…' to browse to your file, "
+                "Warning:  No .lamps_set found at the default path. "
+                "Use 'Load Setup File...' to browse to your file, "
                 "or run LAMPS once to generate it."
             )
             self.lbl_status.setStyleSheet(
@@ -332,14 +332,14 @@ class SetupPanel(QWidget):
         
         top_layout.addStretch()
         
-        btn_save = QPushButton("💾 Save")
+        btn_save = QPushButton("Save")
         btn_save.setFixedWidth(80)
         btn_save.setStyleSheet("QPushButton { background-color: #004d00; color: white; border-radius: 4px; padding: 5px; font-weight: bold; }"
                                "QPushButton:hover { background-color: #006600; }")
         btn_save.clicked.connect(self._save_config)
         top_layout.addWidget(btn_save)
 
-        btn_save_as = QPushButton("💾 Save As…")
+        btn_save_as = QPushButton("Save As...")
         btn_save_as.setFixedWidth(100)
         btn_save_as.setStyleSheet("QPushButton { background-color: #004d4d; color: white; border-radius: 4px; padding: 5px; font-weight: bold; }"
                                   "QPushButton:hover { background-color: #006666; }")
@@ -436,8 +436,8 @@ class SetupPanel(QWidget):
     def _save_config(self):
         if not self.loaded:
             QMessageBox.warning(self, "No File Loaded",
-                                "Please use 'Load Setup File…' to open a setup file first, "
-                                "or use 'Save As…' to create a new one.")
+                                "Please use 'Load Setup File...' to open a setup file first, "
+                                "or use 'Save As...' to create a new one.")
             return
             
         self.config.list_on = 1 if self.chk_list_on.isChecked() else 0
