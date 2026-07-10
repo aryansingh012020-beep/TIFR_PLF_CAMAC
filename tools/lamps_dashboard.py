@@ -494,20 +494,30 @@ class EpicsPoller(QThread):
     """
     Polls either the EPICS proxy or the SimulatedBackend - never on the GUI
     thread.  Emits signals that Qt delivers safely across threads.
+
+    When started in auto-sim fallback mode (force_sim=False, sim!=None),
+    the poller re-probes the IOC every IOC_RECHECK_S seconds.  If the IOC
+    becomes reachable it emits ioc_connected so the dashboard can switch
+    to live EPICS without restarting.
     """
     metrics_ready  = pyqtSignal(dict)       # fired every REFRESH_MS
     spectrum_ready = pyqtSignal(object)     # fired every SPEC_REFRESH_MS
     twod_ready     = pyqtSignal(object)     # fired for 2D histograms
+    ioc_connected  = pyqtSignal()           # fired once when IOC is found
+
+    IOC_RECHECK_S  = 5   # seconds between IOC re-probes while in sim fallback
 
     def __init__(self, proxy: 'EpicsProxy', sim: 'SimulatedBackend | None' = None,
-                 parent=None):
+                 force_sim: bool = False, parent=None):
         super().__init__(parent)
         self._proxy      = proxy
         self._sim        = sim            # None -> use EPICS
+        self._force_sim  = force_sim      # True = never auto-switch to live
         self._running    = True
         self._det        = 1
         self._tick       = 0
         self._spec_every = max(1, SPEC_REFRESH_MS // REFRESH_MS)  # 2
+        self._recheck_ticks = max(1, self.IOC_RECHECK_S * 1000 // REFRESH_MS)
 
     def set_detector(self, det: int):
         self._det = det
@@ -515,14 +525,19 @@ class EpicsPoller(QThread):
     def stop_polling(self):
         self._running = False
 
+    def switch_to_live(self):
+        """Called from the GUI thread after ioc_connected: drop the sim backend."""
+        self._sim = None
+
     # -- Sim-mode ticker: advance simulation by one tick every SIM_HZ interval
     _sim_subtick   = 0
     _sim_hz_ratio  = max(1, 1000 // (SimulatedBackend.SIM_HZ * REFRESH_MS))  # ticks between sim advances
 
     def run(self):
+        recheck_countdown = self._recheck_ticks
         while self._running:
             if self._sim is not None:
-                # -- Simulated backend --------------------------------------
+                # -- Simulated / auto-fallback backend -----------------------
                 # Advance simulator at ~5 Hz regardless of poll rate
                 self._sim_subtick = (self._sim_subtick + 1) % max(1, 1000 // (SimulatedBackend.SIM_HZ * REFRESH_MS))
                 if self._sim_subtick == 0:
@@ -540,6 +555,17 @@ class EpicsPoller(QThread):
                         twod = self._sim.get_twod()
                         if twod is not None:
                             self.twod_ready.emit(twod)
+
+                # -- Periodic re-probe (only if not forced into sim mode) ----
+                if not self._force_sim and EPICS_AVAILABLE:
+                    recheck_countdown -= 1
+                    if recheck_countdown <= 0:
+                        recheck_countdown = self._recheck_ticks
+                        if self._proxy.probe_connection(timeout=1.0):
+                            # IOC is now reachable — notify the GUI thread
+                            self.ioc_connected.emit()
+                            # Stop feeding sim data immediately
+                            self._sim = None
 
             else:
                 # -- Live EPICS backend -------------------------------------
@@ -2780,13 +2806,37 @@ class LampsDashboard(QMainWindow):
 
     def _start_timers(self):
         """Start the background polling thread (EPICS or sim) and wire signals."""
-        self._poller = EpicsPoller(self._epics, sim=self._sim, parent=self)
+        self._poller = EpicsPoller(
+            self._epics,
+            sim=self._sim,
+            force_sim=self._force_sim,
+            parent=self,
+        )
         self._poller.metrics_ready.connect(self._refresh_metrics)
         self._poller.spectrum_ready.connect(self._refresh_spectrum)
         self._poller.twod_ready.connect(self.scatter2d_panel.update_2d)
+        self._poller.ioc_connected.connect(self._on_ioc_connected)
         self._poller.start()
         # Optimistic UI update: react to button presses immediately
         self.ctrl.command_issued.connect(self._on_command_issued)
+
+    def _on_ioc_connected(self):
+        """
+        Fired by EpicsPoller (on GUI thread via Qt signal) when the IOC is
+        detected after auto-sim fallback.  Switches the dashboard to live mode.
+        """
+        self._sim = None
+        # The poller already stopped feeding sim data; nothing else to do there.
+        # Update window title and bottom status bar
+        mode_str = f"{self._epics.prefix} @ {self._epics.ioc}"
+        self.setWindowTitle(f"LAMPS Dashboard  -  {mode_str}")
+        # Re-enable the Run Control buttons in live mode
+        self.ctrl._sim = None
+        if not self._force_sim:
+            self.ctrl.btn_load_driver.setEnabled(True)
+        print(f"[INFO] IOC detected — switched to live EPICS mode ({mode_str})",
+              flush=True)
+
 
     def closeEvent(self, event):
         """Stop the poller thread cleanly before the window closes."""
