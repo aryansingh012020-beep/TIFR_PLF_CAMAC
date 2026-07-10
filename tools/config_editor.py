@@ -4,7 +4,7 @@ from typing import Dict, Any, List
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
     QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, 
-    QMessageBox, QGroupBox, QSpinBox, QCheckBox
+    QMessageBox, QGroupBox, QSpinBox, QCheckBox, QFileDialog, QLineEdit
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QColor
@@ -241,9 +241,66 @@ class SetupPanel(QWidget):
         self._build_ui()
         self._populate()
         
+    def _load_new_file(self):
+        _default_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "set")
+        if not os.path.exists(_default_dir):
+            _default_dir = "/"
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Open LAMPS Setup File", _default_dir,
+            "LAMPS Setup (*.set *.lamps_set);;All files (*)"
+        )
+        if not path:
+            return
+        self.config_file = path
+        self.lbl_filepath.setText(path)
+        self.config = LampsSetupConfig(path)
+        self.loaded = self.config.load()
+        if self.loaded:
+            self._populate()
+            QMessageBox.information(self, "Loaded", f"Setup loaded from:\n{path}")
+        else:
+            QMessageBox.critical(self, "Load Failed",
+                                 f"Could not parse setup file:\n{path}\n"
+                                 "Make sure LAMPS has written it at least once.")
+        
     def _build_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
+        
+        # -- File path bar --------------------------------------------------
+        file_bar = QHBoxLayout()
+        file_bar.addWidget(QLabel("Setup File:"))
+        self.lbl_filepath = QLineEdit(self.config_file)
+        self.lbl_filepath.setReadOnly(True)
+        self.lbl_filepath.setStyleSheet(
+            "background:#1a1a1a; color:#aaa; border:1px solid #333;"
+            "border-radius:3px; padding:2px 6px; font-size:8pt; font-family:monospace;"
+        )
+        file_bar.addWidget(self.lbl_filepath, stretch=1)
+        btn_open = QPushButton("Load Setup File...")
+        btn_open.setFixedWidth(150)
+        btn_open.setStyleSheet(
+            "QPushButton { background:#1a2a1a; color:#aaffaa; border:1px solid #339966;"
+            "border-radius:4px; padding:4px 8px; font-weight:bold; }"
+            "QPushButton:hover { background:#224422; border-color:#aaffaa; }"
+        )
+        btn_open.clicked.connect(self._load_new_file)
+        file_bar.addWidget(btn_open)
+        layout.addLayout(file_bar)
+        
+        # -- Status label (shown when file not yet loaded) ------------------
+        self.lbl_status = QLabel()
+        if not self.loaded:
+            self.lbl_status.setText(
+                "Warning:  No .lamps_set found at the default path. "
+                "Use 'Load Setup File...' to browse to your file, "
+                "or run LAMPS once to generate it."
+            )
+            self.lbl_status.setStyleSheet(
+                "color:#ffcc44; font-size:8pt; padding:4px;"
+            )
+        layout.addWidget(self.lbl_status)
         
         # Top Config Box
         top_box = QGroupBox("General Configuration")
@@ -275,12 +332,19 @@ class SetupPanel(QWidget):
         
         top_layout.addStretch()
         
-        btn_save = QPushButton("💾 Save Setup")
-        btn_save.setFixedWidth(120)
+        btn_save = QPushButton("Save")
+        btn_save.setFixedWidth(80)
         btn_save.setStyleSheet("QPushButton { background-color: #004d00; color: white; border-radius: 4px; padding: 5px; font-weight: bold; }"
                                "QPushButton:hover { background-color: #006600; }")
         btn_save.clicked.connect(self._save_config)
         top_layout.addWidget(btn_save)
+
+        btn_save_as = QPushButton("Save As...")
+        btn_save_as.setFixedWidth(100)
+        btn_save_as.setStyleSheet("QPushButton { background-color: #004d4d; color: white; border-radius: 4px; padding: 5px; font-weight: bold; }"
+                                  "QPushButton:hover { background-color: #006666; }")
+        btn_save_as.clicked.connect(self._save_config_as)
+        top_layout.addWidget(btn_save_as)
         
         layout.addWidget(top_box)
         
@@ -348,9 +412,32 @@ class SetupPanel(QWidget):
                     if self.table.item(row, col):
                         self.table.item(row, col).setForeground(QColor("#444"))
 
+    def _save_config_as(self):
+        _default_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "set")
+        if not os.path.exists(_default_dir):
+            _default_dir = "/"
+            
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save LAMPS Setup File", _default_dir,
+            "LAMPS Setup (*.set);;All files (*)"
+        )
+        if not path:
+            return
+            
+        if not path.endswith('.set') and not path.endswith('.lamps_set'):
+            path += '.set'
+            
+        self.config_file = path
+        self.lbl_filepath.setText(path)
+        self.config.filepath = path
+        self.loaded = True # it will be once we save
+        self._save_config()
+
     def _save_config(self):
         if not self.loaded:
-            QMessageBox.warning(self, "Error", f"Could not find or load {self.config_file} initially. Cannot save.")
+            QMessageBox.warning(self, "No File Loaded",
+                                "Please use 'Load Setup File...' to open a setup file first, "
+                                "or use 'Save As...' to create a new one.")
             return
             
         self.config.list_on = 1 if self.chk_list_on.isChecked() else 0
@@ -383,5 +470,6 @@ class SetupPanel(QWidget):
         try:
             self.config.save()
             QMessageBox.information(self, "Success", f"Configuration saved to {self.config_file}.\nUpdates will take effect on next run.")
+            self.lbl_status.setText("") # Clear any error warnings
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save file: {str(e)}")
