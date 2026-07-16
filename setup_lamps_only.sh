@@ -46,6 +46,22 @@ banner()  { echo -e "\n${BOLD}${CYAN}══════════════�
             echo -e "${BOLD}${CYAN}  $*${RESET}"; \
             echo -e "${BOLD}${CYAN}══════════════════════════════════════════════════${RESET}"; }
 
+wait_for_apt() {
+    local i=0
+    while sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
+          sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
+        if [ $i -eq 0 ]; then
+            warn "apt-get is locked by another process (likely Ubuntu background updates)."
+            info "Waiting for it to finish..."
+        fi
+        sleep 5
+        i=$((i + 5))
+        if [ $i -gt 600 ]; then
+            die "Timed out waiting for apt lock. Please reboot or stop apt manually."
+        fi
+    done
+}
+
 # ── Resolve script / repo root ────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$SCRIPT_DIR"
@@ -77,6 +93,7 @@ esac
 # ────────────────────────────────────────────────────────────────────────────
 banner "Step 1/5 — Installing system packages"
 
+wait_for_apt
 sudo apt-get update -qq
 
 # Core build tools
@@ -134,8 +151,9 @@ else
     PKGS+=(linux-headers-generic)
 fi
 
-sudo apt-get install -y --no-install-recommends "${PKGS[@]}" || \
-    sudo apt-get install -y --ignore-missing "${PKGS[@]}" || \
+wait_for_apt
+sudo apt-get install -y -o DPkg::Lock::Timeout=120 --no-install-recommends "${PKGS[@]}" || \
+    sudo apt-get install -y -o DPkg::Lock::Timeout=120 --ignore-missing "${PKGS[@]}" || \
     die "Failed to install system packages. Is apt running in another terminal or updating in the background?"
 
 ok "System packages installed."
