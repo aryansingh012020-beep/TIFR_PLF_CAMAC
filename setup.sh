@@ -255,7 +255,7 @@ if [ "${EPICS_FOUND}" -eq 0 ]; then
     fi
 
     info "Compiling EPICS Base — this takes 2–5 minutes on modern hardware …"
-    make -C "${EPICS_BASE}" -j"$(nproc)"
+    make -C "${EPICS_BASE}" EPICS_HOST_ARCH="${EPICS_ARCH}" -j"$(nproc)"
 
     # Final sanity check after compile
     if epics_is_built "${EPICS_BASE}"; then
