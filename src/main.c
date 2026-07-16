@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <libgen.h>   /* dirname() */
 #include "lamps.h"
 #include "common.h"                                                                                   //The NSC header file
 #include "daq_engine.h"                                                                             //Phase 2: DAQ callbacks
@@ -212,6 +213,20 @@ gint i;
 struct statfs StatBuf;
 gchar Str[80];
 gfloat DFree;
+
+/* ── Ensure we always run from the directory containing the lamps binary.
+ * This makes ./ldcmc100, ./zmass, ./ascii2d etc. work regardless of
+ * where the user launched lamps from (e.g. /home/user/Downloads/repo/).  */
+{
+    char argv0_copy[4096];
+    strncpy(argv0_copy, argv[0], sizeof(argv0_copy) - 1);
+    argv0_copy[sizeof(argv0_copy) - 1] = '\0';
+    const char *bin_dir = dirname(argv0_copy);
+    if (chdir(bin_dir) != 0)
+        fprintf(stderr, "[LAMPS] WARNING: could not chdir to %s\n", bin_dir);
+    else
+        fprintf(stderr, "[LAMPS] Working directory set to %s\n", bin_dir);
+}
 
 Setup.Simulator=FALSE; Setup.Print.Yes=FALSE;
 if (argc>1)
