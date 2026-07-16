@@ -1,0 +1,1097 @@
+Ion, q+             
+E, TV               
+NMR, I              
+CI (scale)          
+Target              
+Tgt. Rot.           
+Info 1              
+Info 2              
+Info 3              
+Info 4              
+Info 5              
+Info 6              
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Thu Jun 18 19:19:39 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Thu Jun 18 19:29:18 2026      }
+Elapsed sec:            578.9                         }
+Buffers Acquired:       289                           }
+Buffers Processed:      289                           }
+Events:                 28900                         }
+Evt/s:                  49.92                         }
+Dead Time:              -                             }
+List Bytes:             No list                       }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Thu Jun 18 20:47:27 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Fri Jun 19 19:14:08 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Fri Jun 19 20:28:32 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Mon Jun 22 15:34:54 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Mon Jun 22 15:40:49 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Mon Jun 22 15:44:38 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Mon Jun 22 15:47:02 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Mon Jun 22 15:50:14 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Mon Jun 22 15:56:27 2026      }
+Elapsed sec:            373.6                         }
+Buffers Acquired:       158                           }
+Buffers Processed:      158                           }
+Events:                 15800                         }
+Evt/s:                  42.29                         }
+Dead Time:              -                             }
+List Bytes:             No list                       }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Mon Jun 22 16:03:06 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Mon Jun 22 16:35:26 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Tue Jun 23 17:56:47 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Tue Jun 23 17:59:02 2026      }
+Elapsed sec:            134.2                         }
+Buffers Acquired:       67                            }
+Buffers Processed:      67                            }
+Events:                 6700                          }
+Evt/s:                  49.91                         }
+Dead Time:              -                             }
+List Bytes:             No list                       }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Tue Jun 23 21:47:07 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Thu Jun 25 19:20:02 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Thu Jun 25 19:24:38 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Mon Jun 29 20:31:08 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Tue Jun 30 18:07:48 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Tue Jun 30 18:09:18 2026      }
+Elapsed sec:            90.1                          }
+Buffers Acquired:       0                             }
+Buffers Processed:      0                             }
+Events:                 0                             }
+Evt/s:                  0.00                          }
+Dead Time:              -                             }
+List Bytes:             No list                       }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Tue Jun 30 18:11:14 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Tue Jun 30 18:12:16 2026      }
+Elapsed sec:            62.1                          }
+Buffers Acquired:       0                             }
+Buffers Processed:      0                             }
+Events:                 0                             }
+Evt/s:                  0.00                          }
+Dead Time:              -                             }
+List Bytes:             No list                       }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             simple.set                    }
+Start:                  Tue Jun 30 18:13:57 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Tue Jun 30 18:14:59 2026      }
+Elapsed sec:            62.1                          }
+Buffers Acquired:       0                             }
+Buffers Processed:      0                             }
+Events:                 0                             }
+Evt/s:                  0.00                          }
+Dead Time:              -                             }
+List Bytes:             No list                       }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             simple.set                    }
+Start:                  Tue Jun 30 18:15:27 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Tue Jun 30 18:15:45 2026      }
+Elapsed sec:            18.1                          }
+Buffers Acquired:       0                             }
+Buffers Processed:      0                             }
+Events:                 0                             }
+Evt/s:                  0.00                          }
+Dead Time:              -                             }
+List Bytes:             No list                       }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             simple.set                    }
+Start:                  Tue Jun 30 18:16:25 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Tue Jun 30 18:20:09 2026      }
+Elapsed sec:            224.1                         }
+Buffers Acquired:       0                             }
+Buffers Processed:      0                             }
+Events:                 0                             }
+Evt/s:                  0.00                          }
+Dead Time:              -                             }
+List Bytes:             No list                       }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             simple.set                    }
+Start:                  Tue Jun 30 18:20:51 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                1 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Tue Jun 30 18:21:57 2026      }
+Elapsed sec:            66.1                          }
+Buffers Acquired:       0                             }
+Buffers Processed:      0                             }
+Events:                 0                             }
+Evt/s:                  0.00                          }
+Dead Time:              -                             }
+List Bytes:             No list                       }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             simple.set                    }
+Start:                  Tue Jun 30 19:28:18 2026      }
+1d_Spec:                2 32-bit                      }
+2d_Spec:                0 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Tue Jun 30 19:33:04 2026      }
+Elapsed sec:            286.1                         }
+Buffers Acquired:       0                             }
+Buffers Processed:      0                             }
+Events:                 0                             }
+Evt/s:                  0.00                          }
+Dead Time:              -                             }
+List Bytes:             0                             }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             simple.set                    }
+Start:                  Tue Jun 30 19:34:22 2026      }
+1d_Spec:                2 32-bit                      }
+2d_Spec:                0 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Tue Jun 30 19:34:46 2026      }
+Elapsed sec:            24.0                          }
+Buffers Acquired:       0                             }
+Buffers Processed:      0                             }
+Events:                 0                             }
+Evt/s:                  0.00                          }
+Dead Time:              -                             }
+List Bytes:             0                             }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             simple.set                    }
+Start:                  Tue Jun 30 19:36:17 2026      }
+1d_Spec:                2 32-bit                      }
+2d_Spec:                0 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Tue Jun 30 19:40:57 2026      }
+Elapsed sec:            280.4                         }
+Buffers Acquired:       133                           }
+Buffers Processed:      133                           }
+Events:                 276037                        }
+Evt/s:                  984.53                        }
+Dead Time:              -                             }
+List Bytes:             1105212                       }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             simple.set                    }
+Start:                  Tue Jun 30 19:41:40 2026      }
+1d_Spec:                2 32-bit                      }
+2d_Spec:                0 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Tue Jun 30 19:50:17 2026      }
+Elapsed sec:            516.6                         }
+Buffers Acquired:       256                           }
+Buffers Processed:      256                           }
+Events:                 535256                        }
+Evt/s:                  1036.10                       }
+Dead Time:              -                             }
+List Bytes:             2143072                       }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             simple.set                    }
+Start:                  Tue Jun 30 19:50:45 2026      }
+1d_Spec:                2 32-bit                      }
+2d_Spec:                0 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Tue Jun 30 19:52:21 2026      }
+Elapsed sec:            96.2                          }
+Buffers Acquired:       46                            }
+Buffers Processed:      46                            }
+Events:                 96205                         }
+Evt/s:                  1000.18                       }
+Dead Time:              -                             }
+List Bytes:             385188                        }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             simple.set                    }
+Start:                  Tue Jun 30 19:52:52 2026      }
+1d_Spec:                2 32-bit                      }
+2d_Spec:                0 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Tue Jun 30 20:28:29 2026      }
+Elapsed sec:            2136.4                        }
+Buffers Acquired:       1065                          }
+Buffers Processed:      1065                          }
+Events:                 2226948                       }
+Evt/s:                  1042.36                       }
+Dead Time:              -                             }
+List Bytes:             8916312                       }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             simple.set                    }
+Start:                  Tue Jun 30 20:34:59 2026      }
+1d_Spec:                2 32-bit                      }
+2d_Spec:                0 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Tue Jun 30 20:43:12 2026      }
+Elapsed sec:            492.5                         }
+Buffers Acquired:       173                           }
+Buffers Processed:      173                           }
+Events:                 359877                        }
+Evt/s:                  730.70                        }
+Dead Time:              -                             }
+List Bytes:             1326656                       }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             simple.set                    }
+Start:                  Tue Jun 30 20:44:15 2026      }
+1d_Spec:                2 32-bit                      }
+2d_Spec:                0 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Tue Jun 30 20:50:11 2026      }
+Elapsed sec:            356.2                         }
+Buffers Acquired:       35                            }
+Buffers Processed:      35                            }
+Events:                 71975                         }
+Evt/s:                  202.07                        }
+Dead Time:              -                             }
+List Bytes:             122400                        }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             simple.set                    }
+Start:                  Tue Jun 30 20:50:31 2026      }
+1d_Spec:                2 32-bit                      }
+2d_Spec:                0 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Tue Jun 30 21:02:36 2026      }
+1d_Spec:                2 32-bit                      }
+2d_Spec:                0 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Tue Jun 30 21:05:03 2026      }
+Elapsed sec:            146.2                         }
+Buffers Acquired:       73                            }
+Buffers Processed:      73                            }
+Events:                 7300                          }
+Evt/s:                  49.92                         }
+Dead Time:              -                             }
+List Bytes:             29784                         }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Tue Jun 30 21:12:42 2026      }
+1d_Spec:                2 32-bit                      }
+2d_Spec:                0 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Tue Jun 30 21:15:04 2026      }
+Elapsed sec:            142.3                         }
+Buffers Acquired:       69                            }
+Buffers Processed:      69                            }
+Events:                 202102                        }
+Evt/s:                  1419.98                       }
+Dead Time:              -                             }
+List Bytes:             808960                        }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Wed Jul  1 20:52:41 2026      }
+1d_Spec:                2 32-bit                      }
+2d_Spec:                0 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Wed Jul  1 21:10:00 2026      }
+Elapsed sec:            1039.7                        }
+Buffers Acquired:       517                           }
+Buffers Processed:      517                           }
+Events:                 1504667                       }
+Evt/s:                  1447.25                       }
+Dead Time:              -                             }
+List Bytes:             6022804                       }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Thu Jul  2 16:40:41 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                0 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Thu Jul  2 16:58:41 2026      }
+Elapsed sec:            1080.0                        }
+Buffers Acquired:       537                           }
+Buffers Processed:      537                           }
+Events:                 1562695                       }
+Evt/s:                  1447.01                       }
+Dead Time:              -                             }
+List Bytes:             6255062                       }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Thu Jul  2 16:58:58 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                0 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Stop:                   Thu Jul  2 17:00:40 2026      }
+Elapsed sec:            102.3                         }
+Buffers Acquired:       49                            }
+Buffers Processed:      49                            }
+Events:                 141360                        }
+Evt/s:                  1382.35                       }
+Dead Time:              -                             }
+List Bytes:             565824                        }
+Scaler01:               0                             }
+Scaler02:               0                             }
+Scaler03:               0                             }
+Scaler04:               0                             }
+-------------------------------------------------------
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Thu Jul  2 17:07:57 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                0 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]
+Run Name:               Dummy                         }
+Setup File:             none                          }
+Start:                  Thu Jul  2 17:38:08 2026      }
+1d_Spec:                4 32-bit                      }
+2d_Spec:                0 16-bit                      }
+User  1:                                              }
+User  2:                                              }
+User  3:                                              }
+User  4:                                              }
+User  5:                                              }
+User  6:                                              }
+User  7:                                              }
+User  8:                                              }
+User  9:                                              }
+User 10:                                              }
+User 11:                                              }
+User 12:                                              }
+Remarks 1:                                                      ]
+Remarks 2:                                                      ]
+Remarks 3:                                                      ]
+Remarks 4:                                                      ]

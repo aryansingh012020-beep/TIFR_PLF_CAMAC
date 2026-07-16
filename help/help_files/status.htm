@@ -1,0 +1,125 @@
+<HTML>
+<HEAD><TITLE>LAMPS HELP PAGE</TITLE></HEAD>
+<BODY BGCOLOR='#FFDDCC'>
+<CENTER>
+<H2>STATUS INFORMATION</H2>
+<IMG SRC='fscreen.gif'></CENTER>
+
+<font color='brown' size=+1>
+<P>The status information fields are arranged in 5 columns. The first column (in red) gives:
+
+<P><u>Status</u>: This is the program status. It shows one of the following states:<p>
+<font color='black'><b>
+<font color='red'>Status:</font> <u>Free</u><br>
+<font color='red'>Status:</font> <u>Acquiring</u> or <u>Acq. On</u><br>
+<font color='red'>Status:</font> <u>Paused</u><br>
+<font color='red'>Status:</font> <u>Build x of y</u></b></font><p>
+
+During CAMAC acquisition, the status is <font color='black'>Acquiring</font> or 
+<font color='black'>Acq. On</font>. If 
+CAMAC acquisition has been paused, the status is <font color='black'>Paused</font>
+When acquisition is stopped, the status will return to <font color='black'>Free</font>
+During offline analysis, the status shows <font color='black'>Build x of y</font> where 
+<font color='black'>x</font> is the file number
+currently being analysed out of the total <font color='black'>y</font> files which are to be analysed.
+
+<P><u>Disk Cap</u>: This is the capacity of the hard disk. (In case of multiple hard disks the capicity
+of the disk from where the program has been started is shown. There should be no confusion on this
+ground since the output list file will be written to this disk).
+
+<P><u>Disk Free</u>: An important status indicator when list mode data is being acquired. One must keep
+a close watch here when running out of disk space. The units for the display will automatically change
+from Gb to Mb down to Kb as the disk fills.<P>
+
+<HR>
+<FONT COLOR='RED'>
+<U>Q</U>:What happens if the disk gets full during acquisition of list mode data?<br>
+</FONT><FONT COLOR='GREEN'>
+<P><U>A</U>:The file is closed properly and the run is stopped. The user is informed about this
+by a box which appears on the screen.
+</FONT><P><FONT COLOR='RED'>
+<U>Q</U>:What about the spectra files in this case?<br>
+</FONT><FONT COLOR='GREEN'>
+<P><U>A</U>:The spectra files may not have been written. However since the
+program will not have crashed, the user can open another terminal window, delete or backup
+unwanted files and manually save the spectra (Spectra - Save Spectra from the menu bar). 
+</FONT>
+<HR>
+
+<center><IMG SRC='fscreen.gif'></center>
+
+The second column (in blue):
+<P><u>Run</u>: This shows the current run name during acquisition. For offline analysis it shows the name
+of the current file being analysed.
+
+<P><u>Start</u>: The start time of the current run
+
+<P><u>Elapsed</u>: The elapsed time of the current run
+
+<P><u>Stop</u>: This will be initially blank till the run is stopped. After that, the stop time is
+displayed. When the next run starts, then the <i>stop time of the previous run</i> is displayed here
+(marked "Prev. Stop").
+
+<hr><center><IMG SRC='fscreen.gif'></center>
+The third column (in red):
+<P><u>Buffs Acq.</u>: Shows the number of data buffers acquired. During offline analysis it shows
+the number of data buffers processed from the file.
+
+<P><u>Processed</u>: During acquisition, it shows the number of data buffers from which spectra 
+were built. If all is well, this number should be the same as the buffers acquired. However if
+the user has decided to do a lot of processing (large number of spectra or large number of gates
+etc.) then the number appearing here will be less. It is rarely advisable to run acquisition 
+under these circumstances. The user should reduce the number of spectra being built, gates etc. Heavy
+processing can be left for offline analysis.
+<p> For offline analysis, this status field is changed in meaning. (Here there is no question of losing
+buffers. The data are read from the file and fully processed, no matter how much time it takes.) Instead,
+we display here the progress of the analysis as a percentage value. 
+
+<P><u>Kb/s</u>: During acquisition, displays the acquisition speed. This is explained in the following
+example:<br>
+Consider an 8 parameter experiment running at 1000 events/s. Each parameter (data word) consists of
+2 bytes. The acquisition speed would be 16Kb/s. Thus Kb/s is related to Evt/s (below) by a factor
+of (2*Number of Parameters)/1024.
+<P>In this field we also display the <i>differential</i> rate in brackets. In fact for in-beam
+experiments, the differential rate is more meaningful in view of beam current fluctuations.  
+
+<P>For offline analysis, this field has a different meaning. Here the speed is displayed in terms 
+of the bytes read from the file. Since the file consists of compressed data, this is not the same thing.  
+
+<P><u>Evt/s</u>: During acquisition, it shows the event rate. Once again the differential rate is displayed
+in brackets. For offline analysis, it shows the rate at which events are being analysed.
+
+<hr>
+<center><IMG SRC='fscreen.gif'></center>
+Fourth Column (in blue):
+
+<P>For online acquisition, the fields have the following meanings:
+<P><u>Bytes Acqd.</u>: The total number of bytes acquired ( = Kb/s * Elapsed_Time)
+<P><u>ListF Bytes</u>: The actual size of the list mode file (equivalent to the ls -l command). This 
+figure will be smaller than that in Bytes Acqd. due to the compression
+employed. The ratio of the two figures gives the amount of compression taking place and would
+depend upon the nature of the data and the file <a href='./fmtlist.htm'>format</a> (an option in the Setup). 
+<p><u>Events Acq</u>: The total number of events acquired ( = Evt/s * Elapsed_Time)
+<p><u>Dead Time</u>: This field can be displayed only if a CAMAC scaler has been set up and this scaler
+has been named "Masters". The actual number events is obtained from this scaler and the dead time is calculated 
+by the program as 100*(Actual_Events - Recorded_Events)/Actual_Events. When gate blocking is employed as in 
+a multi crate system, the unblocked events should be recorded in the "Masters" scaler.
+
+<P>For offline analysis, the fields change:
+<P><u>Bytes</u>: Shows the (compressed) bytes from the file that have been analysed. 
+<P><u>File Bytes</u>: The size of the file being analysed.
+<P>The progress of the analysis can be judged from these two figures.
+
+<P>As can be seen, though the status fields look similar, they have different meanings
+in the context of acquisition and analysis. However this should not cause any confusion. 
+
+<hr>
+<center><IMG SRC='fscreen.gif'></center>
+Fifth Column (in black):
+<P>When CAMAC scalers are in use, the values are displayed here. The values are continuously updated
+simulating the LED display of a conventional scaler. Note that only 4 scalers are displayed here. When there 
+are more scalers, and also to get the integral and differential rates click <a href='./scalers.htm'>Scalers</a> 
+in the main menu.
+
+</BODY>
+</HTML>

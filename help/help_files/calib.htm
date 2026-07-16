@@ -1,0 +1,36 @@
+<HTML>
+<HEAD><TITLE>LAMPS HELP PAGE</TITLE></HEAD>
+<BODY BGCOLOR='pink'>
+<H2><CENTER>Calibration</CENTER></H2>
+
+<P>The actual process of calibrating a spectrum is not from here (it is invoked as an option
+from the right-click context menu of 1d spectra). The purpose of this menu is to provide
+a means to save calibration data to a file (<U>Save Calibration</U>), read back previously
+saved calibration data (<U>Read Calibration</U>) and directly make changes in the calibration
+file (<U>Edit Calibration</U>). Note that calibration files are to be named <CODE>*.cal</CODE>.
+<U>Edit Calibration</U> serves as a simple notepad-type editor where calibration constants
+can be changed. This is equivalent to editing the calibration file using a text editor.
+After making the changes, the new calibration is at once applied by LAMPS
+and one can optionally save it later by the Save Calibration command.
+
+<P><U>Note</U>: A lot of confusion can be avoided by noting that it is ADC's (i.e. parameters)
+that are calibrated, <i>not</i> 1d-spectra. The difference is that spectrum resolution can
+be different from ADC resolution. The right-click context menu "Calibration" when invoked
+from a 1d spectrum takes care of doing the conversion, and similarly when calibrated values
+are displayed in the spectrum windows, the required conversion factors are applied. But
+when looking at the coefficients P[0], P[1], P[2], P[3] bear in mind that they apply to channel
+numbers in terms of the ADC resolution.
+
+<P>The calibration formula is:
+<BLOCKQUOTE><CODE><PRE>
+E=P[0] + P[1]*x + P[2]*x*x + P[3]*sqrt(x)
+</PRE></CODE></BLOCKQUOTE>
+
+where x is the channel number. If a quadratic term or the sqrt term is not required, the corresponding
+coefficient is zero.
+
+More information about calibration is to be found in the descrption of
+the 1d context menu <A HREF="calib1.htm" TARGET="lmain">Calibrate</A>
+
+</BODY>
+</HTML>

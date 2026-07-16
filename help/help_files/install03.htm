@@ -1,0 +1,93 @@
+<HTML>
+<HEAD><TITLE>Software Installation for Online Data Acquisition</TITLE></HEAD>
+<BODY BGCOLOR='#FFDDFF'>
+<font color='red'><H1><CENTER>Software Installation for Online Data Acquisition</CENTER></H1></font>
+
+<font color='navy'>
+<P><h2><u>Software Installation</u></h2>
+Basically installation consists of unpacking the three 
+downloaded files (lamps.tgz, help.tgz and driver.tgz)
+in the relevant directories using the tar command and, for lamps.tgz
+running the <CODE>make</CODE> command to create the <CODE>lamps</CODE> executable.
+The driver installation is explained in the next section.
+<P><h3><u>Make a login for the primary copy of the software</u></h3>
+Create a login name "lamps" with a password of your choice. As root type:<br> 
+<BLOCKQUOTE><CODE><PRE>
+adduser lamps
+passwd lamps
+</PRE></CODE></BLOCKQUOTE>
+
+<P><h3><u>Make directories</u></h3>
+Login as lamps. Make three directories:<br>
+<BLOCKQUOTE><CODE><PRE>
+mkdir lamps
+mkdir help
+mkdir driver
+</PRE></CODE></BLOCKQUOTE>
+
+<P><h3><u>Install the primary copy of lamps</u></h3>
+Go the directory lamps (<CODE>cd lamps</CODE>) and copy the file lamps.tgz there (i.e. in /home/lamps/lamps). 
+Now unpack and compile:<br>
+<BLOCKQUOTE><CODE><PRE>
+tar zxvf lamps.tgz
+make
+</PRE></CODE></BLOCKQUOTE>
+The program should compile without any errors.
+Include ./ in the path (edit .bash_profile, logout and login again) e.g: 
+PATH=$PATH:$HOME/bin:./
+
+Now if you type <CODE>lamps</CODE> the program will run.
+
+<P><h3><u>Open permissions</u></h3>
+Open permissions so that other users will be able to use <CODE>lamps</CODE> without 
+loading another copy of it:<br>
+<BLOCKQUOTE><CODE><PRE>
+su root
+chmod a+x /home/lamps
+exit
+</PRE></CODE></BLOCKQUOTE>
+
+<P><h3><u>Load the help files</u></h3>
+The help files are to be loaded and unpacked in the
+directory <CODE>/home/lamps/help</CODE>. Go to this directory and copy
+the file help.tgz here. Then unpack it:<br>
+<BLOCKQUOTE><CODE><PRE>
+tar zxvf help.tgz
+</PRE></CODE></BLOCKQUOTE>
+Online help is available in lamps and it will work correctly only if the help files
+are unpacked in this directory. Bear in mind that
+LAMPS is continuously changing, so sometimes the help files are not upto date.
+
+<P><h3><u>Driver Installation</u></h3>
+See next section.
+
+<P><h3><u>Additional logins</u></h3>
+Create additional logins for each user or at least a guest login.
+In these logins provide 
+the path to the software so that any user can run the program without having to make a copy of it. 
+For this, edit the file <CODE>.bash_profile</CODE> of the user adding 
+<CODE>:/home/lamps/lamps</CODE> to the <CODE>PATH</CODE>. 
+For example:<br>
+<BLOCKQUOTE><CODE><PRE>
+PATH=$PATH:$HOME/bin:/home/lamps/lamps<br>
+</PRE></CODE></BLOCKQUOTE>
+
+Now any user running xwindows can start the program by typing 
+<CODE>lamps</CODE> from a terminal window.
+
+<P><h3><u>Installing secondary copies of <CODE>lamps</CODE></u></h3>
+For use along with the user program facility (user.F), a second copy of lamps
+is needed in the users directory. This is because the program has to be re-complied after making
+changes to user.F. The original copy in /home/lamps/lamps is to be left undisturbed.
+
+<P>1. Make a directory where you want to work. Copy <CODE>lamps.tgz</CODE> here.<br>
+2. Unpack : <CODE>tar xzvf lamps.tgz</CODE><br>
+3. Compile: <CODE>make</CODE><br>
+4. Add the path ./ by editing .bash_profile, logout and login again<br>
+4. Run: <CODE>lamps</CODE><br>
+
+<P>The secondary copy is similar to installing for offline use. Note that user.F can be used both online
+and offline, though online use is not so common.
+<P></FONT><FONT FACE='arial'>
+<A HREF='install.htm'>Back to Installation Page</A>
+</font></BODY></HTML>

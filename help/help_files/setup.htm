@@ -1,0 +1,370 @@
+<HTML>
+<HEAD><TITLE>LAMPS HELP PAGE - SETUP</TITLE></HEAD>
+<BODY bgcolor='#ddcccc'>
+<table><tr><td><img src='setup.gif'></td>
+<td><H1>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;SETUP</CENTER></H1></td></tr></table>
+
+<P><b><U>Read Setup</U>:</b> Reads a previously saved setup file.
+<P><b><U>Save Setup</U>:</b> Saves the current setup (overwriting the file it was read from).
+<P><b><U>Save As...</U>:</b> Saves the current setup with a specified file name.
+<P><b><U>Edit Setup</U>:</b> Prepares the setup, both for online acquisition and offline analysis.
+For offline analysis one can start with the same setup file that was used for acquisition
+or make a new one. Actually the setup for offline analysis can be simplified realising that
+CAMAC details are not required. We first explain setup for online acquisition.
+<P><CENTER><IMG SRC='editset.gif'></CENTER>
+<P>This is for a single crate setup. When there are two crates a similar interface appears for two crates.
+The description given here is for 1 crate only. For two crates, the CAMAC modules and parameters should be 
+defined in both crates. The settings for List Mode, Spectra etc are similar for 1 or 2 crates.
+<P>The first column indicates CAMAC stations. These are numbered 1-23. The modules placed in these
+positions are indicated in the second column. Some of the modules (e.g. the ORTEC AD413A ADC) are
+double-width modules. In this case the module must be shown at the correct station number, leaving the
+other station "Empty". For the ORTEC AD413A ADC, if the module has been placed at CAMAC stations 9-10,
+then it should be shown to occupy station 10 (see the ORTEC mannual for further information about
+the ADC). To indicate a module at a given station, click in the "Module Type" column and a dialog
+box opens up:
+<P><CENTER><IMG SRC='module.gif'></CENTER>
+<P>Here one can setup up the module. The following module types are available:
+<table border=1 cellspacing=2>
+<tr><td>Name</td><td>Inputs</td><td>Resolution</td><td>Comment</td></tr>
+<tr><td>Empty</td><td>-</td><td>-</td><td>-</td></tr>
+<tr><td>Ortec 413 ADC</td><td>4</td><td>8K</td><td>Spectroscopy quality</td></tr>
+<tr><td>Ortec 811 ADC</td><td>8</td><td>2K</td><td>Please set the resolution as 4K instead of 2K
+to avoid <a href='./setup.htm#rollback'>roll back</a> of spectra</td></tr>
+<tr><td>LeCroy ADC/QDC</td><td>12</td><td>2K</td><td>negative input 0-2V</td></tr>
+<tr><td>BARC CM60</td><td>4</td><td>4K</td><td>Available from ELD, BARC</td></tr>
+<tr><td>Phillips TDC (or QDC)</td><td>16</td><td>4K</td><td>-</td></tr>
+<tr><td>CAEN TDC</td><td>4</td><td>4K</td><td>-</td></tr>
+<tr><td>Silena 4418/Q</td><td>8</td><td>4K</td><td>Use <a href='special.htm'>Special</a> button</td></tr>
+<tr><td>BiRa Bit Register</td><td>12</td><td>12-bit</td>
+<td><a href='http://www.bira.com/camac/in_out_nim/2351.htm'>click for details</a></td></tr>
+<tr><td>Unknown</td><td>Any</td><td>Specify</td>
+<td>For any module not defined above. Prepare ini and clr files manually.</td></tr>
+</table>
+
+<p>CAMAC modules not listed above can be incorporated. Please send me an <a href='mailto:DrAmbar@gmail.com'>email</a>.
+
+<P>The following properties of the modules should be set:<P>
+<b><U>Lam Enabled/Disabled</U>:</b> LAM (CAMAC Look At Me) is the trigger generator.
+<br><FONT COLOR='RED' SIZE=+1>
+In all coincidence setups <i>one and only one</i> CAMAC module must have LAM enabled <i>in each crate</i>.</FONT>
+<P>All other modules should have LAM disabled.
+If there are several modules, on which module should we enable LAM? LAM should be enabled on the
+slowest module, e.g. if an ORTEC 811 (80 micro-second conversion time) is used along with ORTEC 413
+(6 micro-sec per input conversion time), LAM should be enabled on the slow ORTEC 811. If all the
+ADCs have the same conversion time, LAM should be enabled on the ADC corresponding to parameter
+no. 1 (the left most in the crate).
+<br><FONT COLOR='RED' SIZE=+1>
+In a singles setup employing multiple AD413 ADCs, all the ADCs should have LAM enabled and should
+be set in singles mode.</FONT>
+<P>NOTE THAT SINGLES MODE OPERATION OF THE AD413 IS NOT RELIABLE AND THE
+ADCs SUDDENLY STOP ESPECALLY AT HIGH COUNTING RATES.
+
+<P><b><U>Mode</U>:</b> Coincidence/Singles/Test/Not Relevant. The mode Coincidence/Singles is relevant
+only for the AD413. "Coincidence" is the usual mode of operation for which a master gate signal
+must be input to the ADC. In "Singles" mode the ADC operates without a master gate. For other ADCs  
+"Not Relevant" is the appropriate choice. Some modules (e.g. the Phillips TDC) also have a "Test" 
+mode in which the module generates output without any input. This mode would not be used except
+for tracing faults.
+
+<P><b><U>Gain</U>:</b> Do not change these values. LAMPS knows the ADC gains of all the modules and sets
+it up correctly. 
+<p><A NAME='rollback'>
+<font color='red' size=+1>Roll back problem</font>
+If the gain of ORTEC 811 is set to 2K, spectra will <b><i>roll-back</i></b>.
+LAMPS sets the gain to 4K even though it is actually a
+2K ADC. In this ADC, pulses slightly larger than 2 volts get digitised to values higher
+than 2047. If we set the ADC resolution to 2K, then because of the data masking procedure, pulses
+larger than 2 V corrupt the data at low channel numbers (upto approx channel number 100). So it
+is better to set the resolution to 4K even though it means that the upper
+part of the spectra will be blank.
+</A>
+
+<P><b><U>LLD</U>:</b> The ORTEC 413 and BARC CM60 have LLD values which can be set via CAMAC commands.
+LAMPS displays the common LLD settings by default and rarely would one like to change them. 
+
+<P><b><U>Func</U>:</b> This is the CAMAC function code for reading the module. The value will be either
+0 or 2 depending on the module. LAMPS knows the required value and shows this as the default. (Do
+not change this value.)
+
+<p><b><u>Special</u>:</b> This button is to define some extra features. At present it is used only for the
+Silena QDC where the offsets of individual inputs can be adjusted.<br>
+<center><img src='./special.gif'></center>
+
+<HR>
+<FONT COLOR='RED'>
+<U>Q</U>:The earlier versions of this program were employing .ini .clr file mechanism
+for CAMAC hardware setup. Does LAMPS use .ini and .clr files?<br>
+</FONT><FONT COLOR='GREEN'>
+<U>A</U>:This method was seen to be too dificult for the average user. In LAMPS one just
+clicks on the CAMAC stations and puts modules there.
+</FONT><P><FONT COLOR='RED'>
+<U>Q</U>:But I still find .ini and .clr files in my directory!<br>
+</FONT><FONT COLOR='GREEN'>
+<U>A</U>:LAMPS generates these files based on the setup. For normal use you need not bother about 
+these files. In unusual circumstances (e.g. using an "Unknown" CAMAC module) it is required to
+edit these files directly.  
+</FONT>
+<HR>
+
+<P>We now explain the entries in the next 3 columns "Parameters", "SubAds", "Para Names".<br>
+"Parameters" refer to the parameter numbers. In the example illustrated (which is also the default
+setup), parameters 1 to 4 are located in the ORTEC 413 ADC at Station 10. The corresponding CAMAC
+sub-addresses are 0 to 3 (CAMAC sub-address refers to the multiple inputs of the ADC. The ORTEC 413
+is a quad ADC and the sub-addresses are 0-3). In the next coulumn are the names to be given to the
+parameters. In this case the parameters will be named "Para01", "Para02", "Para03" and "Para04". Note
+that we specify only "Para01-04" in this case rather than "Para01-Para04". Here are some more 
+examples:<p>
+<TABLE BORDER=1 CELLSPACING=2 CELLPADDING=4>
+<TR><TD>Stn</TD><TD>Module Type </TD><TD>Parameters</TD><TD>SubAdds</TD><TD>Para Names   </TD></TR>
+<TR><TD>3 </TD> <TD>Phillips TDC</TD><TD>7-15      </TD><TD>0-8    </TD><TD>Clover_T01-09</TD></TR>
+</TABLE>
+
+<P>Here a Phillips TDC is located at Station 3. Parameters 7 to 15 are defined corresponding to
+sub-addresses 0 to 8 and the names of the parameters are "Clover_T01", "Clover_T02" etc.
+
+<P>Note that the same setup can be simplified as follows:<P>
+
+<TABLE BORDER=1 CELLSPACING=2 CELLPADDING=4>
+<TR><TD>Stn</TD><TD>Module Type </TD><TD>Parameters</TD><TD>SubAdds</TD><TD>Para Names   </TD></TR>
+<TR><TD>3  </TD><TD>Phillips TDC</TD><TD>7-15      </TD><TD>0      </TD><TD>Clover_T01   </TD></TR>
+</TABLE>
+
+<P>Here the full range of values in the columns SubAdds and ParaNames is not supplied but LAMPS
+understands the intention, going by the range of values in the "Parameters" column.
+
+<P>Another example:<P>
+
+<TABLE BORDER=1 CELLSPACING=2 CELLPADDING=4>
+<TR><TD>Stn</TD><TD>Module Type </TD><TD>Parameters</TD><TD>SubAdds</TD><TD>Para Names   </TD></TR>
+<TR><TD>7 </TD> <TD>Ortec 413</TD><TD>1-2,3-4      </TD><TD>0,2    </TD><TD>E1,DeltaE1   </TD></TR>
+</TABLE>
+
+<P>This example illustrates the use of commas. The explanation is:
+
+<TABLE CELLSPACING=2 CELLPADDING=4>
+<TR><TD><U>Para</U></TD><TD><U>Name</U></TD><TD><U>SubAdd</U></TD></TR>
+<TR><TD>1   </TD><TD>E1     </TD><TD>0     </TD></TR>
+<TR><TD>2   </TD><TD>E2     </TD><TD>1     </TD></TR>
+<TR><TD>3   </TD><TD>DeltaE1</TD><TD>2     </TD></TR>
+<TR><TD>4   </TD><TD>DeltaE2</TD><TD>3     </TD></TR>
+</TABLE>
+
+<P>To avoid confusion, after completing setup, take a look at View Setup - Parameter List (described below)
+
+<P>What about offline setups? Here the hardware details are unimportant except for the ADC resolution.<br>
+Consider the data from an experiment with 24 Clovers having 24 Time parameters (resolution 4096) and
+96 Energy parameters (ADC resolution 8192). For offline analysis, the details of the CAMAC setup are 
+unimportant so we can keep the parameters on "Empty" modules. All that is necessary is to make two 
+groups:<P>
+
+<TABLE BORDER=1 CELLSPACING=2 CELLPADDING=4>
+<TR><TD>Stn</TD><TD>Module Type </TD><TD>Parameters</TD><TD>SubAdds</TD><TD>Para Names   </TD></TR>
+<TR><TD>1 </TD> <TD>Empty</TD><TD>1-24  </TD><TD>0</TD><TD>Clover_T1</TD></TR>
+<TR><TD>2 </TD> <TD>Empty</TD><TD>25-120</TD><TD>0</TD><TD>Clover_E1</TD></TR>
+</TABLE>
+
+Then we click on the "Empty" modules and set the Gain=2K and 8K respectively.
+
+<P>Note: The data for this experiment would have been taken on a multi-crate system. But
+we are not concerned with these details for off-line analysis.
+
+<P> The last two columns in the Setup table are Z.Sup LLD and Z.Sup ULD. The values entered here are
+relevant only when acquiring list mode data. If you are acquiring only spectrum data, dont bother with
+the values here. For off-line analysis also, the values in these two columns is irrelevant (the data is
+already supressed, to read it back we dont need to know the Z.Sup LLD and ULD values).
+<P> The LLD and ULD values entered here are utilized by the zero supression scheme (Refer to 
+the section <A HREF="fmtlist.htm">List Mode File Formats</A> for details. Z.Sup LLD and ULD
+are very important in reducing the size of the list mode file. Any parameter not within the range
+[LLD-ULD] specified here is considered "Zero" and supressed (not written in the list mode file). Why
+do we need ULD? This is because e.g. a time channel goes to the full scale value when a "start" pulse
+is present and "stop" pulse absent.   
+
+<HR>
+<FONT COLOR='RED'>
+<U>Q</U>:What is the difference between Z.Sup LLD appearing here and LLD appearing in the dialog
+box for Module Type?<br>
+</FONT><FONT COLOR='GREEN'>
+<U>A</U>:They are two entirely different things. Z.Sup LLD is a threshold value used in the software
+zero-supression algorithm. LLD as an ADC property is a hardware specification causing the ADC to avoid
+digitising unwanted pulses.
+</FONT>
+<HR>
+
+<P>The right side of the Edit Setup window has 4 panels entitled List Mode Settings, Spectra Settings,
+Pseudo Parameter Settings and Scaler Settings. We describe these below:
+
+<P>LIST MODE SETTINGS<CENTER><IMG SRC="help011.jpg"></CENTER>
+This values in this box are relevant for online data acquisition only, except for "Compression" which
+must be set correctly for offline analysis. 
+<P> The first button toggles list mode on/off. 
+<P> The second buton, "Compression" decides the file format to be used both for writing the 
+list mode file and for analysis.  The file formats are "Normal", "Advanced" and "Freedom". 
+"Normal" is the usual zls format used in the earlier programs ACQ and AMPS. "Advanced" is 
+a new Group Suppression Format and "Freedom" is the format used by the CANDLE and FREEDOM 
+programs at NSC, New Delhi.
+<P>(As of 15 October 2002, we have not yet implemented writing in formats 
+other than zls, but read back of data in the group suppression format and NSC Freedom format has 
+already been implemented). 
+<P>List file formats are explained in a <A HREF="fmtlist.htm">separate section</A>.
+<P>The next button is to set the buffer size. This is the size of the data block in bytes and is 
+important even if list mode is off. The size to select depends upon the data rate. When the data
+rate is high, large buffer sizes should be used (maximum is 16384 bytes) and lower values should
+be used when the data rates are lower. LAMPS will automatically round off the entered value
+in multiples of 2*(No. of Parameters). For example if you select a buffer size of 0 (zero), and
+there are 8 parameters, LAMPS will correct the value to 16 bytes.
+<P>Gated List Mode is an advanced facility. In normal use, it is switched off by setting the
+Gates value to 0 (zero). Gated list mode allows the user to apply sofrware conditions event-by-event
+which need to be satisfied for the data to be written to the list mode file. Rejecting events
+in this manner leads to reduction in the size of the list file. Consider an experiment studying
+particle gamma coincidences. The particle detector sees also elastic scattering events for
+which the event rate is high, leading to a lot of random events. These are partly rejected by
+hardware, but suppose the rejection is not perfect. By applying software gates we can further
+cleanup the data. In order to use this facility, the number of Gates is specified (upto 10)
+and then clicking on "Define Gates" brings up a table in which we set the thresholds for the
+parameters. All the gates must test <CODE>TRUE</CODE> for the event to be accepted i.e. the gates
+are applied in <CODE>AND</CODE> condition. 
+
+<HR NOSHADE>
+<FONT COLOR='RED'>
+<U>Q</U>:What is the difference between using Gated List Mode and Z.Sup LLD, ULD values?<br>
+</FONT><FONT COLOR='GREEN'>
+<U>A</U>:Z.Sup LLD, ULD suppress writing the value of a parameter outside the valid range
+in the list file, but the values of the other parameters of the event are recorded. In
+Gated List Mode if any of the gates tests to FALSE, the entire event is rejected. The list
+mode file, during offline analysis will show a smaller number of events than what was
+indicated during acquisition.
+</FONT><P><FONT COLOR='RED'>
+<U>Q</U>:Do these consderations apply for the spectra also?<br>
+</FONT><FONT COLOR='GREEN'>
+<U>A</U>:No! And this has been a mis-understanding for some users. The spectra are built independent
+of the Z.Sup LLD, ULD values and independent of the gates defined in Gated List Mode. If you make 
+an error in defining the Z.Sup LLD and ULD values, then during acquisition you may not notice anything
+unusual in the displayed spectra, however when you re-build the spectra offline they will look
+different.</FONT><P><FONT COLOR='RED'>
+<U>Q</U>:But I want to apply gates on the spectra also.<br> 
+</FONT><FONT COLOR='GREEN'>
+<U>A</U>:For this, gates can be put while defining the spectra (see below).
+</FONT>
+<HR NOSHADE>
+<P>
+
+<P>SPECTRA SETTINGS<CENTER><IMG SRC="help012.jpg"></CENTER>
+<P>After selecting the number of 1d and 2d spectra, the next step is to click the buttons
+marked "Single Word" which can be toggled to "Double Word". The settings Single/Double Word
+are applied separately for 1d and 2d spectra. However all the 1d spectra must be of the same
+word size and all the 2d spectra must be of the same word size. With Single Word setting
+the counts at any channel will overflow (go to zero and then start increasing again) after 
+reaching 65535. So if one expects large counts one should change to Single Word. For 2d spectra
+it is rather unlikely to expect overflows and Single Word is usually sufficient.
+<P>After these settings have been made, by clicking the "Define" button for 1d spectra
+settings are to be made in the following tabular form:
+<TABLE BORDER=1 CELLSPACING=2 CELLPADDING=4>
+<TR><TD>No</TD><TD>Para</TD><TD>Spec.<br>Size</TD><TD>No of<br>1d Gates</TD><TD>Condition</TD>
+<TD>Define<br>1d Gates</TD><TD>No of<br>2d Gates</TD><TD>Condition</TD><TD>Define<br>2d Gates</TD></TR>
+<TR><TD>1</TD><TD>1</TD><TD>1K</TD><TD>0</TD><TD>AND</TD><TD>Define</TD>
+<TD>0</TD><TD>AND</TD><TD>Define</TD></TR>
+</TABLE> 
+ 
+<P>Here the second column is the parameter number for which the spectrum is to be built,
+the spectrum size can be selected as 8K, 4K, 2K, 1K, 512, 256, 128, 64, 32 or 16. In the next column
+one can enter the number of 1d gates to be applied if building gated spectra. In this case
+by clicking the corresponding "Define" button, a window appears where a number of gates can
+be defined by specifying the parameter number and threshold values. The Condition can be set
+either to <CODE>AND</CODE> otherwise <CODE>OR</CODE>. The same procedure applies to 2d gates.
+However, in this case after clicking "Define" one has to input the file names of banana gates
+which are to be applied. Banana gates are to be previously prepared by first generating
+2d spectra without gates and drawing a polygon to mark desired regions.
+
+<P>Note that the Condition setting <CODE>AND/OR</CODE> has been given separately for 1d and 2d
+gates. The conditions apply independently for all the 1d gates and all the 2d gates and finally
+the two conditions are <CODE>ANDED</CODE> together.
+
+<P>I have been told that the method in the older program ACOFF of defining a set of 1d gates
+in general and then selecting them as required while defining various spectra was better.
+In the present case, if the same 1d gate has to be used for many spectra it is required to
+type the settings repeatedly. If all the users feel similarly, I will change this interface.   
+
+<P>At the bottom of the Define 1d Spectra window there is another dialog:
+<TABLE BORDER=1 CELLSPACING=2 CELLPADDING=4>
+<TR><TD>No. Range</TD><TD>Para. Range</TD><TD>Size</TD></TR>
+<TR><TD>1-37</TD><TD>1-37</TD><TD>2K</TD><TD>Apply</TD></TR>
+</TABLE>
+The aim of this global shortcut is to allow a large number of 1d spectra to be defined quickly.
+In the above example, 37 1d spectra all of 2K size corresponding to parameter numbers 1 to 37 
+can be defined by clicking "Apply".
+
+<A NAME='pseudo'>
+<P>PSEUDO PARAMETER SETTINGS<CENTER><IMG SRC="help013.jpg"></CENTER>
+<P>Pseudo parameters or virtual ADCs are parameters that can be defined by mathematical relations
+from the actual parameters. After deciding on the number of Pseudos, clicking on the Define
+button allows values to be set in the following table:
+
+<TABLE BORDER=1 CELLSPACING=2 CELLPADDING=4>
+<TR><TD>No</TD><TD>Para1</TD><TD>Para2</TD><TD>Size</TD><TD>Type</TD>
+<TR><TD>1</TD><TD>1</TD><TD>2</TD><TD>8192</TD><TD>Sum</TD><TD>Define</TD>
+</TABLE> 
+
+By clicking on the Type button one can get access to the following standard types:<br>
+
+<BLOCKQUOTE><CODE><PRE>
+Sum        (Sum of two parameters)
+Product    (Product of two parameters)
+Ratio      (Ratio of two parameters)
+Position   (The postion value for position sensitive detectors)
+PI         (The particle identifier for a telescope)
+Multip.    (Number of firing detectors)
+User       (User defined)
+</PRE></CODE></BLOCKQUOTE>
+
+Now if one clicks on the "Define" button, the corresponding mathematical equation is
+displayed, along with a form to set values of the constants. An example:
+<P><CENTER><IMG SRC="help014.jpg"></CENTER>
+<P>In this example, a pseudo parameter will be created whose value will be<br>
+<BLOCKQUOTE><CODE><PRE>
+K3*(K1*P1+O1+K2*P2+O2)+O3
+</PRE></CODE></BLOCKQUOTE>
+with the values of K1, K2, K3 and O1, O2, O3 to be selected.
+
+<P>Notice the "Size" button. It has a similar meaning as ADC gain for real parameters. The user
+must be careful about the range of values when creating pseudos. For example if two parameters
+are being added the result may exceed the value of "Size". When this happens, the correspondng
+spectrum if created will appear truncated. The remedy is to use to use smaller values of the
+constants, e.g. K3=0.5.
+
+<P>Aside from the standard pseudo parameters defined above, one can have additional user-defined
+pseudos. To do this, one has to edit the FORTRAN program user.F, include the definition here
+and then compile LAMPS again using the <CODE>make</CODE> command. Details about user.F are in
+a <A HREF="user.htm">separate section</A>.</A>
+
+<P>SCALER SETTINGS<CENTER><IMG SRC="help015.jpg"></CENTER>
+<P>CAMAC scalers are very useful to record the beam current, the number of master gates (for dead time
+purposes) or any other input. For this, a CAMAC scaler of any make (such as the CAEN 16-channel CAMAC
+scaler) can be located somewhere in the CAMAC crate. After selecting the number of scalers (maximum 4)
+clicking on "Define" brings up a table:<br>
+
+<TABLE BORDER=1 CELLSPACING=2 CELLPADDING=4>
+<TR><TD>No</TD><TD>Name</TD><TD>Stn No</TD><TD>Sub Addr</TD><TD>Function</TD></TR>
+</TABLE>
+<P>Here we can give a useful name for each scaler and enter the CAMC NAF values for reading the
+scaler. The Station Number, N is the location of the scaler in the CAMAC crate, Sub-Address, A is the
+channel of the multi-input scaler and the CAMAC Function code, F=0 for all known
+makes of scalers. 
+<P>
+
+<P><U>View Setup</U>
+When acquisition or analysis is in progress it is not permitted to edit the setup. At this time it is
+possible to View Setup. The different format of this View Setup function shows a short summary
+of the setup. One use of Setup - View Setup - Parameter List (even if acquisition is not running)
+is to check if there is any mix-up while definig the parameters. This menu shows a list of parameters
+along with their names and NAF settings.  
+
+<HR NOSHADE>
+<FONT COLOR='RED'>
+While making the setup, a number of dialog boxes open up, and these in turn open other dialog boxes.
+These dialog boxes must be closed as soon as one has finished with them, otherwise the program
+appears to be stuck. For example if the last dialog window is moved off the screen, or covered
+the program appears to be no longer responding to mouse clicks!
+</FONT>
+
+</BODY>
+</HTML>

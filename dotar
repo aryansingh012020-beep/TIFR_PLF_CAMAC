@@ -1,0 +1,10 @@
+tar czvf lamps-cmc100-`date +%d-%m-%y`.tgz ./readme.txt ./dotar src/*.c src/*.F src/*.h \
+src/*.xpm src/Makefile src/readme.txt src/userF/*.F ban/readme.txt bat/readme.txt \
+cal/readme.txt set/readme.txt set/simple.set spec/readme.txt \
+zls/readme.txt log/readme.txt mac/readme.txt help/* \
+driver/BuildDriver driver/cmcamac.c driver/Makefile
+echo "************************************************************************************"
+echo "lamps-cmc100-`date +%d-%m-%y`.tgz created." 
+echo "To unpack: 'tar zxvf lamps-gtk2-`date +%d-%m-%y`.tgz' in the uppermost level of \
+the installation directory"
+echo "************************************************************************************"

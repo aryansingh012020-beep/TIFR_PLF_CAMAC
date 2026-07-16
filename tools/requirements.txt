@@ -1,0 +1,8 @@
+# LAMPS Python GUI — requirements
+# Install with: pip install -r requirements.txt
+
+pyqtgraph>=0.13.0
+pyepics>=3.5.0
+PyQt5>=5.15.0
+numpy>=1.20.0
+scipy>=1.7.0   # needed from Phase 7.5 (Gaussian peak fitting)

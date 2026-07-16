@@ -1,0 +1,76 @@
+<HTML>
+<HEAD><TITLE>LAMPS HELP PAGE - Log File</TITLE></HEAD>
+<BODY BGCOLOR='#FFDDAA'>
+<table><tr><td><img src='logf1.jpg'></td><td><H1>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Log File</H1></td></tr></table>
+<FONT COLOR='red' FACE='arial'>
+During acquisition, when runs are started and stoppped entries are made in the file lamps.log (in the directory
+from where lamps is started). The data written has the following fixed information fields:
+
+<CENTER><TABLE BORDER=2 BGCOLOR='pink'>
+<TR>
+<TD>Run Name<br>Setup File<br>Start Date<br>Start Time</TD>
+<TD>Stop<br>Elapsed Sec<br>Bufs Acq<br>Bufs Proc</TD>
+<TD>Events<br>Evt/s<br>Dead Time<br>List Bytes</TD>
+<TD>Scaler 1<br>Scaler 2<br>Scaler 3<br>Scaler 4</TD>
+<TD>Remarks</TD>
+<TR>
+</TABLE></CENTER>
+
+<P>(Only 4 scaler values are stored in lamps.log, if you have more scalers you will find them in
+scaler.log)
+
+<P>In addition lamps.log can store 12 additional optional data fields. 
+The names of the fields themselves can be changed. By default (when LAMPS is started with no
+lamps.log file) the fields are:
+
+<CENTER><TABLE BORDER=2 BGCOLOR='pink'>
+<TR>
+<TD>Ion, q+<br>E, TV<br>NMR, I<br>CI (scale)</TD>
+<TD>Target<br>Tgt. Rot.<br>Info 1<br>Info 2</TD>
+<TD>Info 3<br>Info 4<br>Info 5<br>Info 6</TD>
+<TR>
+</TABLE></CENTER>
+
+These fields (as also the Remarks column) are to be filled by the user. The fields can be filled at
+any time during or after the run. See View, Edit (below).
+
+<table><tr><td><img src='logf1.jpg'></td><td><H1>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;View, Edit</H1></td></tr></table>
+When View, Edit is selected a new window opens:
+<CENTER><img src='logf2.png'></CENTER>
+<OL>
+  <LI>To change any of the optional headings, click the heading.
+  <LI>The data of the ongoing run or the last run will be displayed. For an ongoing
+      run, the second, third and fourth columns will show "No information"  
+  <LI>To view the data of another run use the Prev, Next, Home and End buttons.
+  <LI>Click Delete Entry to remove the log file entry which is currently displayed.
+  <LI>Click Delete All to remove all log file entries.
+  <LI>The data for the fixed inforation fields (except) Remarks are inserted by LAMPS
+and cannot be altered
+  <LI>The data for the optional fields must by input the user. Click in the relevant area
+and insert the information
+</OL>
+
+<table><tr><td><img src='logf1.jpg'></td><td><H1>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Make Word File</H1></td></tr></table>
+</FONT><FONT FACE='verdana' COLOR='#440033'>
+This can be done at the end of the experiment, or offline on another computer where
+the lamps.log file has been copied. A MS-Word file caled lampslog.rtf will be created in the working
+directory. If you copy this file to a Windows partition or to a Windows PC, it can be opened in MS-Word.
+You can also open it directly in Linux with OpenOffice.org, but in this case you will need to drag the 
+column separators of the table (to adjust the column widths) as shown below.<p>
+<CENTER><TABLE BORDER=2 CELLSPACING=2 BGCOLOR='navy'>
+<TR><TD><img src='wrdview.gif'></TD></TR>
+<TR><TD><CENTER><FONT COLOR='white' FACE='verdana'><b>View of lampslog.rtf in OpenOffice.org 
+after adjusting the column widths</b></FONT></CENTER></TR></TD>
+</TABLE></CENTER>
+<P>
+A printout of the word file is very useful while working on the analysis. You could even export
+the columns to an Excel worksheet.
+<P>
+The log file itself (lamps.log) is a text file with all the information in readable form
+but lampslog.rtf is better formatted for printing, creating additional columns etc.
+
+</FONT></BODY>
+</HTML>

@@ -1,0 +1,50 @@
+<HTML>
+<HEAD><TITLE>Driver Installation</TITLE></HEAD>
+<BODY BGCOLOR='#FFFFCC'>
+<font color='red'><H1><CENTER>DRIVER INSTALLATION</CENTER></H1></font>
+
+<FONT color='brown'>
+When lamps is to be used for data acquisition, create a new user account called lamps. (Log in as root
+and then type <CODE>adduser lamps</CODE>). Login as lamps for the present (root login is required
+later)
+<br>Create and change to the driver directory (<CODE>cd /home/lamps/driver</CODE>).<P>
+<OL>
+   <LI>Download the appropriate driverXXX.tgz file for your RedHat/Fedora Core installation<br>
+       If you have a different version of Linux, download driver_any.tgz then re-compile the driver
+       (see APPENDIX below)
+   <LI>Keep this tgz file in the directory /home/lamps/driver
+   <LI>Unpack the files (e.g.): tar zxvf driver9_0.tgz
+   <LI>Login as root, edit the file /etc/rc.d/rc.local adding the line<br>
+       <CODE>/home/lamps/driver/cc2002_load</CODE><br>
+       at the end (i.e. last line of the file)
+   <LI>Re-boot. The driver is installed (if the PCI card is inserted in the PC)
+</OL>
+<P><h3><u>Verifying Driver Installation</u></h3>
+<OL>
+   <LI>After re-boot, login as root<br>
+   <LI>Look through the file /var/log/messages. Typically you should see:<br>
+       <BLOCKQUOTE><CODE>
+       Jun  3 09:33:11 hp1 kernel: Driver cc2000: Registered Device cc2000 major no 254
+       Jun  3 09:33:11 hp1 kernel: PCI: Found IRQ 11 for device 00:10.0
+       Jun  3 09:33:11 hp1 kernel: Driver cc2000: IO Address de00 dc00 da00
+       </BLOCKQUOTE></CODE>
+   <LI>Execute /sbin/lsmod. Typically you should see:
+       <BLOCKQUOTE><CODE>
+       Module                  Size  Used by    Tainted: PF
+       cc2000                  7380   0  (unused)
+       </BLOCKQUOTE></CODE>
+</OL>
+<p><h3><u>APPENDIX: DRIVER COMPILATION</u></h3>
+Re-compiling the driver is required if you have a different Linux version<p>
+1. Download driver_any.tgz in /home/lamps/driver. Unpack with: tar zxvf driver_any.tgz<br>
+2. Login as root and install the kernel source files<br>
+   E.g: In RedHat8.0 it is on the second CD and can be installed with<br><CODE>
+   rpm --install /mnt/cdrom/RedHat/RPMS/kernel-source-2.4.18-14.i386.rpm</CODE><br>
+   Verify with: <CODE>rpm -q kernel-source</CODE><br>
+3. Compile the driver with the command:<br><CODE>
+cc -O2 -D__KERNEL__ -I /lib/modules/`uname -r`/build/include -c cc2002.c</CODE><br>
+4. There should be no errors and cc2002.o should be created. If the kernel source
+is not correctly installed there will be a lot of error messages.
+<P></FONT><FONT FACE='arial'>
+<A HREF='install.htm'>Back to Installation Page</A>
+</font></BODY></HTML>

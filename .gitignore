@@ -1,0 +1,70 @@
+# ============================================================
+# .gitignore — LAMPS DAQ / EPICS Integration
+# ============================================================
+
+# ── Local preference / calibration / settings files ─────────
+.lamps_prefs
+.lamps_prefs.old
+.lamps_cal
+.lamps_set
+
+# ── C / Fortran build artefacts ─────────────────────────────
+*.o
+*.ko
+*.a
+*.so
+*.mod
+*.mod.c
+*.cmd
+*.i
+modules.order
+Module.symvers
+.tmp_versions/
+
+# ── Compiled LAMPS executables (top-level) ──────────────────
+lamps
+crash
+ascii2d
+cmc100test
+ldcmc100
+mkword
+zmass
+camacctl
+sim_shm
+lamps_epics_bridge
+
+# ── Python cache / virtual-envs ─────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Jupyter ─────────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ── Temporary / scratch data files ──────────────────────────
+tools/ahaha
+tools/haha.csv
+tools/spectrum.csv
+tools/test.csv
+tools/test.py
+tools/test_screenshot.png
+
+# ── Editor / IDE ────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS noise ────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
