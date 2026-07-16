@@ -323,8 +323,8 @@ fi
 
 info "Installing Python packages from ${REQ_FILE} …"
 # Upgrade pip first to avoid legacy resolver issues on Ubuntu 24.04
-"${VENV_DIR}/bin/pip" install --upgrade pip --quiet
-"${VENV_DIR}/bin/pip" install -r "${REQ_FILE}" --quiet
+"${VENV_DIR}/bin/pip" install --upgrade pip
+"${VENV_DIR}/bin/pip" install -r "${REQ_FILE}"
 
 ok "Python packages installed inside ${VENV_DIR}"
 
