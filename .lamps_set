@@ -1,7 +1,7 @@
 ------------------------ListMode Setup starts here------------------------------
 ListOn                                  =0
 Compression                             =1
-Event Rate (0-4)                        =4
+Event Rate (0-4)                        =1
 No of Gates                             =0
 ------------------------ListMode Setup end here---------------------------------
 ------------------------Hardware Setup starts here------------------------------
@@ -24,7 +24,7 @@ ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
 Stn.No. 5   Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
 Parameters, SubAddresses                =<> <>
 ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
-Stn.No. 6   Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
+Stn.No. 6   Module,Lam,Mode,LLD,F,Gain  =1 0 5 50 0 8192
 Parameters, SubAddresses                =<> <>
 ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
 Stn.No. 7   Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
@@ -36,18 +36,18 @@ ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
 Stn.No. 9   Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
 Parameters, SubAddresses                =<> <>
 ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
-Stn.No. 10  Module,Lam,Mode,LLD,F,Gain  =2 0 5 0 0 4096
+Stn.No. 10  Module,Lam,Mode,LLD,F,Gain  =1 1 2 50 2 8192
 Parameters, SubAddresses                =<1-4> <0-3>
 ParaNames, ZSupLLD, ZSupULD             =<Para01-04> 1 8190
-Stn.No. 11  Module,Lam,Mode,LLD,F,Gain  =4 0 5 50 0 8192
+Stn.No. 11  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
 Parameters, SubAddresses                =<> <>
 ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
 Stn.No. 12  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
 Parameters, SubAddresses                =<> <>
 ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
-Stn.No. 13  Module,Lam,Mode,LLD,F,Gain  =10 0 2 50 0 8192
+Stn.No. 13  Module,Lam,Mode,LLD,F,Gain  =9 1 0 50 0 8192
 Parameters, SubAddresses                =<5-8> <0-3>
-ParaNames, ZSupLLD, ZSupULD             =<Para05-08> 1 65535
+ParaNames, ZSupLLD, ZSupULD             =<Para05-08> 1 8190
 Stn.No. 14  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
 Parameters, SubAddresses                =<> <>
 ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
@@ -60,7 +60,7 @@ ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
 Stn.No. 17  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
 Parameters, SubAddresses                =<> <>
 ParaNames, ZSupLLD, ZSupULD             =<> 1 8190
-Stn.No. 18  Module,Lam,Mode,LLD,F,Gain  =9 1 0 50 0 8192
+Stn.No. 18  Module,Lam,Mode,LLD,F,Gain  =9 1 2 50 0 8192
 Parameters, SubAddresses                =<1-2> <0-2>
 ParaNames, ZSupLLD, ZSupULD             =<para05-08> 1 8190
 Stn.No. 19  Module,Lam,Mode,LLD,F,Gain  =0 0 5 50 0 8192
@@ -153,11 +153,15 @@ Spectra Safety                          =1
 Safety Time                             =10
 ------------------------Spectra Setup ends here---------------------------------
 ------------------------Oned Setup starts here----------------------------------
-No. of 1d Spectra                       =2
+No. of 1d Spectra                       =4
 Word Size                               =2
 Spec. No. 1    Para,NPar,Size,Name      =1 1 1024 Oned_1
 NGates1,Cond,NGates2,Cond               =0 0 0 0
 Spec. No. 2    Para,NPar,Size,Name      =2 1 1024 Oned_2
+NGates1,Cond,NGates2,Cond               =0 0 0 0
+Spec. No. 3    Para,NPar,Size,Name      =2 1 1024 Oned_3
+NGates1,Cond,NGates2,Cond               =0 0 0 0
+Spec. No. 4    Para,NPar,Size,Name      =2 1 1024 Oned_4
 NGates1,Cond,NGates2,Cond               =0 0 0 0
 ------------------------Oned Setup ends here------------------------------------
 ------------------------Twod Setup starts here----------------------------------
@@ -178,20 +182,7 @@ Periodic Log on?                        =1
 BufCount                                =100
 ------------------------Periodic Log Setup ends here----------------------------
 ------------------------Macro Setup starts here---------------------------------
-Number of Macros                        =1
+Number of Macros                        =0
 Macro Refresh Rate                      =100
-Macro Name                              =Macro01
-Macro Type                              =0
-Display?(0/1)                           =1
-1d/2d SpecNo                            =1
-XMin                                    =10
-XMax                                    =100
-YMin                                    =10
-YMax                                    =100
-K1                                      =1.000000
-K2                                      =1.000000
-Scaler Number                           =1
-Index1                                  =1
-Index2                                  =1
 ------------------------Macro Setup ends here-----------------------------------
 IgnoreCamac                             =0
