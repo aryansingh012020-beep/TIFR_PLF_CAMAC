@@ -147,7 +147,8 @@ banner "Step 2/5 — Compiling LAMPS DAQ (standalone, no EPICS)"
 cd "${REPO_ROOT}/src"
 
 # Build without EPICS: pass EPICS_BASE="" so the Makefile skips bridge targets
-info "Running: make -j$(nproc) EPICS_BASE= (EPICS bridge will be skipped)"
+info "Running: make clean && make -j$(nproc) EPICS_BASE= (EPICS bridge will be skipped)"
+make clean
 make -j"$(nproc)" EPICS_BASE="" 2>&1 | tee /tmp/lamps_make.log
 
 ok "LAMPS compiled. Binaries written to ${REPO_ROOT}/"

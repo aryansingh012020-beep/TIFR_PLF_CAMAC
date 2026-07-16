@@ -290,7 +290,8 @@ banner "Step 4/8 — Compiling LAMPS DAQ"
 
 cd "${REPO_ROOT}/src"
 
-info "Running: make -j$(nproc) EPICS_BASE=${EPICS_BASE}"
+info "Running: make clean && make -j$(nproc) EPICS_BASE=${EPICS_BASE}"
+make clean
 make -j"$(nproc)" EPICS_BASE="${EPICS_BASE}" 2>&1 | tee /tmp/lamps_make.log
 
 ok "LAMPS compiled. Binaries written to ${REPO_ROOT}/"
