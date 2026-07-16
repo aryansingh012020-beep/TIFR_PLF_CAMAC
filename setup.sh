@@ -142,7 +142,8 @@ else
 fi
 
 sudo apt-get install -y --no-install-recommends "${PKGS[@]}" || \
-    sudo apt-get install -y --ignore-missing "${PKGS[@]}" || true
+    sudo apt-get install -y --ignore-missing "${PKGS[@]}" || \
+    die "Failed to install system packages. Is apt running in another terminal or updating in the background?"
 
 ok "System packages installed."
 
