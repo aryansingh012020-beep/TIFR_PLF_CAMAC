@@ -370,7 +370,7 @@ static void push_offline(int scaler_pv_start, int spec_pv_start)
  *
  * run_name_event_cb: fires when CMD:RUN_NAME changes — just caches the value.
  * ========================================================================= */
-static void run_name_event_cb(struct event_handler_args args)
+static void run_name_event_cb(event_handler_args args)
 {
 #ifdef HAVE_EPICS
     if (!args.dbr) return;
@@ -383,7 +383,7 @@ static void run_name_event_cb(struct event_handler_args args)
 #endif
 }
 
-static void cmd_event_cb(struct event_handler_args args)
+static void cmd_event_cb(event_handler_args args)
 {
 #ifdef HAVE_EPICS
     if (!args.dbr) return;
