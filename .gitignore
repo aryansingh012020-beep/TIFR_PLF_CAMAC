@@ -21,6 +21,14 @@ modules.order
 Module.symvers
 .tmp_versions/
 
+# Exception: keep the pre-compiled CAMAC kernel module and its source.
+# cmcamac.ko is kernel-version-specific and cannot be rebuilt generically
+# by the setup scripts — it must be shipped as a binary in the repo.
+!driver/cmcamac.ko
+!driver/cmcamac.c
+!driver/Makefile
+!driver/BuildDriver
+
 # ── Compiled LAMPS executables (top-level) ──────────────────
 lamps
 crash
