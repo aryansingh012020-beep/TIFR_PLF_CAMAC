@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  setup.sh  —  LAMPS DAQ + EPICS Integration  —  Full Automated Installer
+#  setup_lamps_only.sh  —  LAMPS DAQ  —  Automated Installer (no EPICS)
 # =============================================================================
 #
 #  USAGE (run once after cloning):
 #
 #      git clone https://github.com/aryansingh012020-beep/TIFR_PLF_CAMAC.git
 #      cd TIFR_PLF_CAMAC
-#      chmod +x setup.sh
-#      ./setup.sh
+#      chmod +x setup_lamps_only.sh
+#      ./setup_lamps_only.sh
 #
 #  What this script does, end-to-end:
 #   1. Detects Ubuntu / Debian version, adapts package names accordingly
-#   2. Installs ALL system packages (GCC, GTK2, Fortran, LibUSB, Python 3, pip …)
-#   3. Clones and compiles EPICS Base R7.0.7 (skips if already present)
-#   4. Writes permanent EPICS environment exports to ~/.bashrc / ~/.zshrc
-#   5. Compiles the full LAMPS suite (sim_shm, bridge, main binary, etc.)
-#   6. Installs the Python dashboard dependencies (pip, virtual-env aware)
-#   7. Runs a quick smoke-test to verify everything linked correctly
-#   8. Prints a "Getting Started" summary
+#   2. Installs ALL system packages needed by LAMPS (GCC, GTK2, Fortran,
+#      LibUSB, Python 3, pip …) — NO EPICS packages
+#   3. Compiles the full LAMPS suite (sim_shm, main binary, etc.)
+#      NOTE: lamps_epics_bridge is NOT built in this mode
+#   4. Installs the Python dashboard dependencies (pip, virtual-env aware)
+#   5. Runs a quick smoke-test to verify everything linked correctly
+#   6. Prints a "Getting Started" summary
 #
 #  Tested on:
 #    Ubuntu 20.04 LTS  (Focal)
@@ -28,8 +28,8 @@
 #
 #  Re-running the script is safe — every step is idempotent.
 #
-#  NOTE: This script installs BOTH LAMPS and EPICS.
-#        For a LAMPS-only install (no EPICS), use setup_lamps_only.sh instead.
+#  NOTE: This script does NOT install or configure EPICS.
+#        For EPICS + LAMPS combined setup, use setup.sh instead.
 # =============================================================================
 
 set -euo pipefail
@@ -60,7 +60,7 @@ if [ -f /etc/os-release ]; then
     OS_VER="${VERSION_ID:-0}"
 fi
 
-banner "LAMPS DAQ + EPICS Automated Setup"
+banner "LAMPS DAQ Setup (LAMPS only — no EPICS)"
 info "Detected OS : ${OS_ID} ${OS_VER} (${OS_CODENAME})"
 info "Repo root   : ${REPO_ROOT}"
 echo ""
@@ -72,13 +72,13 @@ case "${OS_ID}" in
 esac
 
 # ────────────────────────────────────────────────────────────────────────────
-# STEP 1 — System package installation
+# STEP 1 — System package installation (LAMPS only, no EPICS deps)
 # ────────────────────────────────────────────────────────────────────────────
-banner "Step 1/7 — Installing system packages"
+banner "Step 1/5 — Installing system packages"
 
 sudo apt-get update -qq
 
-# Core build tools (identical across all supported Ubuntu versions)
+# Core build tools
 PKGS=(
     build-essential
     gcc
@@ -104,16 +104,10 @@ PKGS=(
     libusb-dev
     usbutils
 
-    # EPICS build dependencies
+    # General utilities
     git
     wget
     curl
-    perl
-    libreadline-dev
-    libncurses5-dev
-
-    # Readline / terminal (nice-to-have for CA tools)
-    libreadline-dev
 
     # Python 3 + pip (for dashboard)
     python3
@@ -128,7 +122,6 @@ PKGS=(
 )
 
 # Ubuntu 24.04 "Noble" changed libusb-dev → libusb-1.0-0-dev
-# Both names are safe to list; apt will silently skip unknown ones with --ignore-missing
 PKGS+=(libusb-1.0-0-dev)
 
 # linux-headers: try the running kernel first; fall back to generic
@@ -146,157 +139,20 @@ sudo apt-get install -y --no-install-recommends "${PKGS[@]}" || \
 ok "System packages installed."
 
 # ────────────────────────────────────────────────────────────────────────────
-# STEP 2 — EPICS Base  (smart detection — install only if truly missing)
+# STEP 2 — Compile LAMPS (C sources + Fortran, NO EPICS bridge)
 # ────────────────────────────────────────────────────────────────────────────
-banner "Step 2/7 — EPICS Base detection & setup"
-
-# ── Detect host architecture first (needed for path checks below) ─────────────
-MACHINE="$(uname -m)"
-case "$MACHINE" in
-    x86_64)  EPICS_ARCH="linux-x86_64"  ;;
-    aarch64) EPICS_ARCH="linux-aarch64" ;;
-    armv7l)  EPICS_ARCH="linux-arm"     ;;
-    *)       EPICS_ARCH="linux-x86_64"
-             warn "Unknown machine '${MACHINE}' — assuming linux-x86_64 for EPICS." ;;
-esac
-info "Host arch   : ${EPICS_ARCH}"
-
-# ── Helper: returns 0 if the given directory has a fully-built EPICS base ─────
-#   Criteria: bin/<arch>/softIoc  AND  lib/<arch>/libca.so   both exist.
-epics_is_built() {
-    local base="$1"
-    [ -x "${base}/bin/${EPICS_ARCH}/softIoc" ] && \
-    [ -f "${base}/lib/${EPICS_ARCH}/libca.so" ]
-}
-
-# ── Four-layer detection ──────────────────────────────────────────────────────
-#
-#   Layer 1 – softIoc already on PATH (system-wide or previously sourced env)
-#   Layer 2 – $EPICS_BASE env variable is set and points to a working build
-#   Layer 3 – Default location ~/epics/base already built
-#   Layer 4 – Nothing found → clone from GitHub and compile
-
-EPICS_FOUND=0
-EPICS_BASE=""     # will be set by whichever layer succeeds
-
-# ---------- Layer 1: softIoc already on PATH ----------
-if command -v softIoc &>/dev/null; then
-    SOFTIOC_PATH="$(command -v softIoc)"
-    info "[Layer 1] 'softIoc' found on PATH: ${SOFTIOC_PATH}"
-    # Walk up from bin/<arch>/softIoc  to  the EPICS base root
-    CANDIDATE="$(dirname "$(dirname "$(dirname "${SOFTIOC_PATH}")")")"
-    if epics_is_built "${CANDIDATE}"; then
-        EPICS_BASE="${CANDIDATE}"
-        ok "EPICS Base is fully installed at ${EPICS_BASE} — nothing to do."
-        EPICS_FOUND=1
-    else
-        warn "softIoc is on PATH but build looks incomplete at ${CANDIDATE} — continuing checks."
-    fi
-fi
-
-# ---------- Layer 2: $EPICS_BASE env variable ----------
-if [ "${EPICS_FOUND}" -eq 0 ] && [ -n "${EPICS_BASE:-}" ]; then
-    info "[Layer 2] \$EPICS_BASE env var is set: ${EPICS_BASE}"
-    if epics_is_built "${EPICS_BASE}"; then
-        ok "EPICS Base confirmed at \$EPICS_BASE (${EPICS_BASE}) — nothing to do."
-        EPICS_FOUND=1
-    else
-        warn "\$EPICS_BASE is set but build looks incomplete — continuing checks."
-        EPICS_BASE=""   # clear so Layer 4 can set the default path
-    fi
-fi
-
-# ---------- Layer 3: default ~/epics/base ----------
-DEFAULT_EPICS_BASE="${HOME}/epics/base"
-if [ "${EPICS_FOUND}" -eq 0 ] && epics_is_built "${DEFAULT_EPICS_BASE}"; then
-    EPICS_BASE="${DEFAULT_EPICS_BASE}"
-    info "[Layer 3] Found working EPICS build at default path: ${EPICS_BASE}"
-    ok "EPICS Base is already installed — skipping clone and compile."
-    EPICS_FOUND=1
-fi
-
-# ---------- Layer 4: clone from GitHub and compile ----------
-if [ "${EPICS_FOUND}" -eq 0 ]; then
-    EPICS_BRANCH="${EPICS_BRANCH:-R7.0.7}"
-    EPICS_ROOT="${EPICS_ROOT:-${HOME}/epics}"
-    EPICS_BASE="${EPICS_ROOT}/base"
-
-    info "[Layer 4] EPICS Base not found anywhere — installing from scratch."
-    info "          Target: ${EPICS_BASE}  Branch: ${EPICS_BRANCH}"
-
-    # Clone only if not already partially cloned
-    if [ ! -d "${EPICS_BASE}/.git" ]; then
-        info "Cloning EPICS Base ${EPICS_BRANCH} (shallow clone, ~100 MB) …"
-        mkdir -p "${EPICS_ROOT}"
-        git clone --branch "${EPICS_BRANCH}" --depth 1 \
-            https://github.com/epics-base/epics-base.git "${EPICS_BASE}"
-    else
-        info "Partial clone found at ${EPICS_BASE} — resuming compile."
-    fi
-
-    info "Compiling EPICS Base — this takes 2–5 minutes on modern hardware …"
-    make -C "${EPICS_BASE}" -j"$(nproc)"
-
-    # Final sanity check after compile
-    if epics_is_built "${EPICS_BASE}"; then
-        ok "EPICS Base R7.0.7 compiled and verified."
-        EPICS_FOUND=1
-    else
-        die "EPICS compile finished but softIoc or libca.so is still missing. Check /tmp/lamps_make.log"
-    fi
-fi
-
-info "Using EPICS_BASE = ${EPICS_BASE}"
-
-# ────────────────────────────────────────────────────────────────────────────
-# STEP 3 — Persist EPICS environment variables
-# ────────────────────────────────────────────────────────────────────────────
-banner "Step 3/7 — Configuring shell environment"
-
-# Snippet we want to inject into shell rc files
-EPICS_ENV_BLOCK="
-# ── EPICS Base (added by LAMPS setup.sh) ───────────────────
-export EPICS_BASE=\"${EPICS_BASE}\"
-export EPICS_HOST_ARCH=\"${EPICS_ARCH}\"
-export PATH=\"\$PATH:${EPICS_BASE}/bin/${EPICS_ARCH}\"
-export LD_LIBRARY_PATH=\"${EPICS_BASE}/lib/${EPICS_ARCH}\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}\"
-# ───────────────────────────────────────────────────────────
-"
-
-inject_env() {
-    local RC_FILE="$1"
-    if [ -f "$RC_FILE" ] && grep -q "EPICS_BASE" "$RC_FILE"; then
-        info "EPICS env already present in ${RC_FILE} — skipping."
-    else
-        echo "${EPICS_ENV_BLOCK}" >> "$RC_FILE"
-        ok "EPICS env written to ${RC_FILE}"
-    fi
-}
-
-inject_env "$HOME/.bashrc"
-[ -f "$HOME/.zshrc" ] && inject_env "$HOME/.zshrc"
-
-# Export for the remainder of THIS script session
-export EPICS_BASE
-export EPICS_HOST_ARCH="${EPICS_ARCH}"
-export PATH="${PATH}:${EPICS_BASE}/bin/${EPICS_ARCH}"
-export LD_LIBRARY_PATH="${EPICS_BASE}/lib/${EPICS_ARCH}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-
-# ────────────────────────────────────────────────────────────────────────────
-# STEP 4 — Compile LAMPS (C sources + Fortran + EPICS bridge)
-# ────────────────────────────────────────────────────────────────────────────
-banner "Step 4/7 — Compiling LAMPS DAQ"
+banner "Step 2/5 — Compiling LAMPS DAQ (standalone, no EPICS)"
 
 cd "${REPO_ROOT}/src"
 
-info "Running: make -j$(nproc) EPICS_BASE=${EPICS_BASE}"
-make -j"$(nproc)" EPICS_BASE="${EPICS_BASE}" 2>&1 | tee /tmp/lamps_make.log
+# Build without EPICS: pass EPICS_BASE="" so the Makefile skips bridge targets
+info "Running: make -j$(nproc) EPICS_BASE= (EPICS bridge will be skipped)"
+make -j"$(nproc)" EPICS_BASE="" 2>&1 | tee /tmp/lamps_make.log
 
 ok "LAMPS compiled. Binaries written to ${REPO_ROOT}/"
 
-# Also build the standalone SHM simulator
+# Build the standalone SHM simulator (pure POSIX — no GTK, no EPICS)
 info "Compiling sim_shm …"
-# sim_shm only needs standard POSIX — no GTK, no EPICS
 gcc -O2 -o "${REPO_ROOT}/src/sim_shm" \
     "${REPO_ROOT}/src/sim_shm.c" \
     -I"${REPO_ROOT}/src" \
@@ -307,9 +163,9 @@ ok "sim_shm built."
 cd "${REPO_ROOT}"
 
 # ────────────────────────────────────────────────────────────────────────────
-# STEP 5 — Python dashboard dependencies
+# STEP 3 — Python dashboard dependencies
 # ────────────────────────────────────────────────────────────────────────────
-banner "Step 5/7 — Installing Python dashboard dependencies"
+banner "Step 3/5 — Installing Python dashboard dependencies"
 
 REQ_FILE="${REPO_ROOT}/tools/requirements.txt"
 
@@ -322,31 +178,28 @@ if [ ! -d "${VENV_DIR}" ]; then
 fi
 
 info "Installing Python packages from ${REQ_FILE} …"
-# Upgrade pip first to avoid legacy resolver issues on Ubuntu 24.04
 "${VENV_DIR}/bin/pip" install --upgrade pip --quiet
 "${VENV_DIR}/bin/pip" install -r "${REQ_FILE}" --quiet
 
 ok "Python packages installed inside ${VENV_DIR}"
 
 # ────────────────────────────────────────────────────────────────────────────
-# STEP 6 — Make all scripts executable
+# STEP 4 — Make all scripts executable
 # ────────────────────────────────────────────────────────────────────────────
-banner "Step 6/7 — Fixing permissions on shell scripts"
+banner "Step 4/5 — Fixing permissions on shell scripts"
 
 chmod +x \
-    "${REPO_ROOT}/setup.sh" \
     "${REPO_ROOT}/setup_lamps_only.sh" \
+    "${REPO_ROOT}/setup.sh" \
     "${REPO_ROOT}/setup_environment.sh" \
-    "${REPO_ROOT}/run_bridge.sh" \
-    "${REPO_ROOT}/start_sim_dashboard.sh" \
-    "${REPO_ROOT}/src/run_ioc.sh" || true
+    "${REPO_ROOT}/start_sim_dashboard.sh" || true
 
 ok "Script permissions set."
 
 # ────────────────────────────────────────────────────────────────────────────
-# STEP 7 — Smoke test
+# STEP 5 — Smoke test (LAMPS only — no EPICS checks)
 # ────────────────────────────────────────────────────────────────────────────
-banner "Step 7/7 — Smoke tests"
+banner "Step 5/5 — Smoke tests"
 
 PASS=0; FAIL=0
 
@@ -362,10 +215,9 @@ check() {
     fi
 }
 
-check "sim_shm"            "${REPO_ROOT}/sim_shm"
-check "lamps_epics_bridge" "${REPO_ROOT}/lamps_epics_bridge"
-check "camacctl"           "${REPO_ROOT}/camacctl"
-check "softIoc (EPICS)"    "${EPICS_BASE}/bin/${EPICS_ARCH}/softIoc"
+check "sim_shm"  "${REPO_ROOT}/sim_shm"
+check "camacctl" "${REPO_ROOT}/camacctl"
+check "lamps"    "${REPO_ROOT}/lamps"
 
 # Verify Python imports inside the venv
 info "Testing Python dashboard imports …"
@@ -391,27 +243,18 @@ echo -e "${BOLD}Smoke-test results: ${GREEN}${PASS} passed${RESET}, ${RED}${FAIL
 # ────────────────────────────────────────────────────────────────────────────
 # DONE — Print getting-started guide
 # ────────────────────────────────────────────────────────────────────────────
-banner "Setup Complete!"
+banner "Setup Complete! (LAMPS standalone — no EPICS)"
 
 cat <<GUIDE
 
 ${BOLD}════════════════════  GETTING STARTED  ════════════════════${RESET}
 
-${BOLD}▶  Apply environment variables to your current shell:${RESET}
-    source ~/.bashrc
-
-${BOLD}▶  Simulator mode (no hardware needed) — 3 terminals:${RESET}
+${BOLD}▶  Simulator mode (no hardware needed) — 2 terminals:${RESET}
 
   Terminal 1 — Physics data simulator:
     ${CYAN}${REPO_ROOT}/sim_shm${RESET}
 
-  Terminal 2 — EPICS IOC (Process Variable server):
-    ${CYAN}softIoc -m "P=LAMPS:" -d ${REPO_ROOT}/src/lamps.db${RESET}
-
-  Terminal 3 — EPICS Bridge (SHM → EPICS publisher):
-    ${CYAN}${REPO_ROOT}/run_bridge.sh -v${RESET}
-
-${BOLD}▶  Python dashboard (GUI):${RESET}
+  Terminal 2 — Python dashboard (GUI):
     ${CYAN}${VENV_DIR}/bin/python3 ${REPO_ROOT}/tools/lamps_dashboard.py${RESET}
 
   Or activate the venv first:
@@ -421,9 +264,9 @@ ${BOLD}▶  Python dashboard (GUI):${RESET}
 ${BOLD}▶  Live hardware mode (real CMC100 CAMAC controller):${RESET}
     ${CYAN}${REPO_ROOT}/lamps${RESET}
 
-${BOLD}▶  Quick EPICS channel check (after IOC + bridge are running):${RESET}
-    ${CYAN}camonitor LAMPS:TOTAL_EVENTS${RESET}
-    ${CYAN}caget     LAMPS:STATUS${RESET}
+${BOLD}▶  NOTE: EPICS bridge is NOT available in this setup.${RESET}
+   To enable EPICS integration, run setup.sh instead:
+    ${CYAN}./setup.sh${RESET}
 
 ${BOLD}════════════════════════════════════════════════════════════${RESET}
 GUIDE

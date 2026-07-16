@@ -67,7 +67,7 @@ $(EXEDIR)mkword: mkword.o useful.o
 $(EXEDIR)zmass: zmass.o useful.o open.o
 	$(CC) -o $(EXEDIR)zmass zmass.o useful.o open.o $(CFLAGS) $(LDFLAGS)
 $(EXEDIR)lamps: $(SETS)
-	$(FC) -o $(EXEDIR)lamps $(SETS) `pkg-config --libs gtk+-2.0 gthread-2.0` -lm
+	$(FC) -o $(EXEDIR)lamps $(SETS) `pkg-config --libs gtk+-2.0 gthread-2.0` -lm -lrt -lpthread
 	@echo "********************************************************"
 	@echo "* Make complete. If you dont have errors...            *"
 	@echo "* go to the upper level directory and type ./lamps     *"
