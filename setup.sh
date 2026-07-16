@@ -16,9 +16,10 @@
 #   3. Clones and compiles EPICS Base R7.0.7 (skips if already present)
 #   4. Writes permanent EPICS environment exports to ~/.bashrc / ~/.zshrc
 #   5. Compiles the full LAMPS suite (sim_shm, bridge, main binary, etc.)
-#   6. Installs the Python dashboard dependencies (pip, virtual-env aware)
-#   7. Runs a quick smoke-test to verify everything linked correctly
-#   8. Prints a "Getting Started" summary
+#   6. Rebuilds the CAMAC kernel module (cmcamac.ko) for THIS machine's kernel
+#   7. Installs the Python dashboard dependencies (pip, virtual-env aware)
+#   8. Runs a quick smoke-test to verify everything linked correctly
+#   9. Prints a "Getting Started" summary
 #
 #  Tested on:
 #    Ubuntu 20.04 LTS  (Focal)
@@ -74,7 +75,7 @@ esac
 # ────────────────────────────────────────────────────────────────────────────
 # STEP 1 — System package installation
 # ────────────────────────────────────────────────────────────────────────────
-banner "Step 1/7 — Installing system packages"
+banner "Step 1/8 — Installing system packages"
 
 sudo apt-get update -qq
 
@@ -148,7 +149,7 @@ ok "System packages installed."
 # ────────────────────────────────────────────────────────────────────────────
 # STEP 2 — EPICS Base  (smart detection — install only if truly missing)
 # ────────────────────────────────────────────────────────────────────────────
-banner "Step 2/7 — EPICS Base detection & setup"
+banner "Step 2/8 — EPICS Base detection & setup"
 
 # ── Detect host architecture first (needed for path checks below) ─────────────
 MACHINE="$(uname -m)"
@@ -251,7 +252,7 @@ info "Using EPICS_BASE = ${EPICS_BASE}"
 # ────────────────────────────────────────────────────────────────────────────
 # STEP 3 — Persist EPICS environment variables
 # ────────────────────────────────────────────────────────────────────────────
-banner "Step 3/7 — Configuring shell environment"
+banner "Step 3/8 — Configuring shell environment"
 
 # Snippet we want to inject into shell rc files
 EPICS_ENV_BLOCK="
@@ -285,7 +286,7 @@ export LD_LIBRARY_PATH="${EPICS_BASE}/lib/${EPICS_ARCH}${LD_LIBRARY_PATH:+:$LD_L
 # ────────────────────────────────────────────────────────────────────────────
 # STEP 4 — Compile LAMPS (C sources + Fortran + EPICS bridge)
 # ────────────────────────────────────────────────────────────────────────────
-banner "Step 4/7 — Compiling LAMPS DAQ"
+banner "Step 4/8 — Compiling LAMPS DAQ"
 
 cd "${REPO_ROOT}/src"
 
@@ -307,9 +308,34 @@ ok "sim_shm built."
 cd "${REPO_ROOT}"
 
 # ────────────────────────────────────────────────────────────────────────────
-# STEP 5 — Python dashboard dependencies
+# STEP 5 — Rebuild CAMAC kernel module for THIS machine's kernel
 # ────────────────────────────────────────────────────────────────────────────
-banner "Step 5/7 — Installing Python dashboard dependencies"
+banner "Step 5/8 — Building CAMAC kernel module (cmcamac.ko)"
+
+DRV_DIR="${REPO_ROOT}/driver"
+KERNEL_BUILD="/lib/modules/$(uname -r)/build"
+
+if [ -d "${KERNEL_BUILD}" ]; then
+    info "Kernel build tree found: ${KERNEL_BUILD}"
+    info "Building cmcamac.ko for kernel $(uname -r) …"
+    make -C "${KERNEL_BUILD}" M="${DRV_DIR}" modules 2>&1 | tee /tmp/cmcamac_build.log
+    if [ -f "${DRV_DIR}/cmcamac.ko" ]; then
+        ok "cmcamac.ko built for kernel $(uname -r)"
+    else
+        warn "cmcamac.ko build failed — check /tmp/cmcamac_build.log"
+        warn "The pre-compiled .ko in the repo will be used (may not match this kernel)"
+    fi
+else
+    warn "Kernel build tree not found at ${KERNEL_BUILD}"
+    warn "Cannot rebuild cmcamac.ko — using pre-compiled version from repo."
+    warn "If 'insmod: Invalid module format' occurs, install linux-headers-$(uname -r)"
+    warn "and re-run this script."
+fi
+
+# ────────────────────────────────────────────────────────────────────────────
+# STEP 6 — Python dashboard dependencies
+# ────────────────────────────────────────────────────────────────────────────
+banner "Step 6/8 — Installing Python dashboard dependencies"
 
 REQ_FILE="${REPO_ROOT}/tools/requirements.txt"
 
@@ -329,9 +355,9 @@ info "Installing Python packages from ${REQ_FILE} …"
 ok "Python packages installed inside ${VENV_DIR}"
 
 # ────────────────────────────────────────────────────────────────────────────
-# STEP 6 — Make all scripts executable
+# STEP 7 — Make all scripts executable
 # ────────────────────────────────────────────────────────────────────────────
-banner "Step 6/7 — Fixing permissions on shell scripts"
+banner "Step 7/8 — Fixing permissions on shell scripts"
 
 chmod +x \
     "${REPO_ROOT}/setup.sh" \
@@ -344,9 +370,9 @@ chmod +x \
 ok "Script permissions set."
 
 # ────────────────────────────────────────────────────────────────────────────
-# STEP 7 — Smoke test
+# STEP 8 — Smoke test
 # ────────────────────────────────────────────────────────────────────────────
-banner "Step 7/7 — Smoke tests"
+banner "Step 8/8 — Smoke tests"
 
 PASS=0; FAIL=0
 

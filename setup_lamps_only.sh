@@ -16,9 +16,10 @@
 #      LibUSB, Python 3, pip …) — NO EPICS packages
 #   3. Compiles the full LAMPS suite (sim_shm, main binary, etc.)
 #      NOTE: lamps_epics_bridge is NOT built in this mode
-#   4. Installs the Python dashboard dependencies (pip, virtual-env aware)
-#   5. Runs a quick smoke-test to verify everything linked correctly
-#   6. Prints a "Getting Started" summary
+#   4. Rebuilds the CAMAC kernel module (cmcamac.ko) for THIS machine's kernel
+#   5. Installs the Python dashboard dependencies (pip, virtual-env aware)
+#   6. Runs a quick smoke-test to verify everything linked correctly
+#   7. Prints a "Getting Started" summary
 #
 #  Tested on:
 #    Ubuntu 20.04 LTS  (Focal)
@@ -163,9 +164,34 @@ ok "sim_shm built."
 cd "${REPO_ROOT}"
 
 # ────────────────────────────────────────────────────────────────────────────
-# STEP 3 — Python dashboard dependencies
+# STEP 3 — Rebuild CAMAC kernel module for THIS machine's kernel
 # ────────────────────────────────────────────────────────────────────────────
-banner "Step 3/5 — Installing Python dashboard dependencies"
+banner "Step 3/6 — Building CAMAC kernel module (cmcamac.ko)"
+
+DRV_DIR="${REPO_ROOT}/driver"
+KERNEL_BUILD="/lib/modules/$(uname -r)/build"
+
+if [ -d "${KERNEL_BUILD}" ]; then
+    info "Kernel build tree found: ${KERNEL_BUILD}"
+    info "Building cmcamac.ko for kernel $(uname -r) …"
+    make -C "${KERNEL_BUILD}" M="${DRV_DIR}" modules 2>&1 | tee /tmp/cmcamac_build.log
+    if [ -f "${DRV_DIR}/cmcamac.ko" ]; then
+        ok "cmcamac.ko built for kernel $(uname -r)"
+    else
+        warn "cmcamac.ko build failed — check /tmp/cmcamac_build.log"
+        warn "The pre-compiled .ko in the repo will be used (may not match this kernel)"
+    fi
+else
+    warn "Kernel build tree not found at ${KERNEL_BUILD}"
+    warn "Cannot rebuild cmcamac.ko — using pre-compiled version from repo."
+    warn "If 'insmod: Invalid module format' occurs, install linux-headers-$(uname -r)"
+    warn "and re-run this script."
+fi
+
+# ────────────────────────────────────────────────────────────────────────────
+# STEP 4 — Python dashboard dependencies
+# ────────────────────────────────────────────────────────────────────────────
+banner "Step 4/6 — Installing Python dashboard dependencies"
 
 REQ_FILE="${REPO_ROOT}/tools/requirements.txt"
 
@@ -184,9 +210,9 @@ info "Installing Python packages from ${REQ_FILE} …"
 ok "Python packages installed inside ${VENV_DIR}"
 
 # ────────────────────────────────────────────────────────────────────────────
-# STEP 4 — Make all scripts executable
+# STEP 5 — Make all scripts executable
 # ────────────────────────────────────────────────────────────────────────────
-banner "Step 4/5 — Fixing permissions on shell scripts"
+banner "Step 5/6 — Fixing permissions on shell scripts"
 
 chmod +x \
     "${REPO_ROOT}/setup_lamps_only.sh" \
@@ -197,9 +223,9 @@ chmod +x \
 ok "Script permissions set."
 
 # ────────────────────────────────────────────────────────────────────────────
-# STEP 5 — Smoke test (LAMPS only — no EPICS checks)
+# STEP 6 — Smoke test (LAMPS only — no EPICS checks)
 # ────────────────────────────────────────────────────────────────────────────
-banner "Step 5/5 — Smoke tests"
+banner "Step 6/6 — Smoke tests"
 
 PASS=0; FAIL=0
 
