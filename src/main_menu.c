@@ -1,6 +1,8 @@
 #include <gtk/gtk.h>
 #include <stdlib.h>
 #include <glib.h>
+#include <unistd.h>   /* getcwd() */
+#include <limits.h>   /* PATH_MAX */
 #include "lamps.h"
 //
 //Function templates
@@ -40,7 +42,19 @@ void ViewLog(GtkWidget *W,gpointer Unused);
 void LoadDriver(GtkWidget *W,gpointer Unused);
 //----------------------------------------------------------------------------------------------------------------------
 static gpointer LoadDriverThread(gpointer data)
-{ system("pkexec ./ldcmc100"); return NULL; }
+{
+    /* Ubuntu 22.04+ pkexec (post CVE-2021-4034) rejects relative paths.
+     * Build an absolute path using getcwd() — which is already the repo
+     * root thanks to the chdir(dirname(argv[0])) in main.c.              */
+    char cwd[PATH_MAX] = {0};
+    char cmd[PATH_MAX + 64];
+    if (getcwd(cwd, sizeof(cwd)) && cwd[0])
+        snprintf(cmd, sizeof(cmd), "pkexec %s/ldcmc100", cwd);
+    else
+        snprintf(cmd, sizeof(cmd), "pkexec ./ldcmc100");   /* fallback */
+    system(cmd);
+    return NULL;
+}
 void LoadDriver(GtkWidget *W,gpointer Unused)
 { g_print("Loading driver...please wait 5 sec\n"); g_thread_new("load_driver",LoadDriverThread,NULL); }
 /*----------------------------------------------------------------------------------------------------------------------*/
